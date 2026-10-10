@@ -1,0 +1,763 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0f1216" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#eef0ec" media="(prefers-color-scheme: light)">
+<title>Ze Gym</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&display=swap">
+<style>:root{padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+</head>
+<body>
+<style>
+/* Layout: phone-first single column. Home = week strip, a wide "Today's plan" hero with a bumper-plate ring, then a 2x2 grid of colour-coded cards (plate colours: red, green, blue, yellow). */
+:root{
+  --bg:#eef0ec; --surface:#ffffff; --surface2:#f5f6f3; --fg:#161a1f; --muted:#5a636d; --line:#dcdfd8;
+  --plate-gym:#c8352e; --plate-diet:#22803f; --plate-cardio:#2160c4; --plate-body:#946800; --plate-settings:#39414a; --on-plate:#ffffff;
+  --ink-gym:#b02a25; --ink-diet:#1f6b3a; --ink-cardio:#1c50a5; --ink-body:#7d5800; --ink-settings:#39414a;
+  --hero-a:#1d232b; --hero-b:#3d4855;
+  --shadow:0 1px 2px rgba(20,25,30,.06),0 8px 24px rgba(20,25,30,.07);
+  --display:"Barlow Condensed","Arial Narrow",Impact,sans-serif;
+  --body:"Barlow",system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0f1216; --surface:#191e24; --surface2:#20262d; --fg:#eef0ea; --muted:#98a1ab; --line:#2b323a;
+  --ink-gym:#f0726a; --ink-diet:#62c486; --ink-cardio:#73a5f2; --ink-body:#e0b548; --ink-settings:#c3cad1; --plate-settings:#4a535d;
+  --hero-a:#232b35; --hero-b:#485563;
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 10px 28px rgba(0,0,0,.35); color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f1216; --surface:#191e24; --surface2:#20262d; --fg:#eef0ea; --muted:#98a1ab; --line:#2b323a;
+  --ink-gym:#f0726a; --ink-diet:#62c486; --ink-cardio:#73a5f2; --ink-body:#e0b548; --ink-settings:#c3cad1; --plate-settings:#4a535d;
+  --hero-a:#232b35; --hero-b:#485563;
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 10px 28px rgba(0,0,0,.35); color-scheme:dark}
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:16px;line-height:1.45}
+.wrap{max-width:560px;margin:0 auto;padding-inline:16px;padding-block:24px 48px;display:flex;flex-direction:column;gap:20px}
+h1,h2{font-family:var(--display);font-weight:700;margin:0;text-wrap:balance;line-height:1}
+h1{font-size:46px;text-transform:uppercase;letter-spacing:.01em}
+.top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.sub{color:var(--muted);margin:6px 0 0}
+button{font:inherit;color:inherit;cursor:pointer}
+:focus-visible{outline:3px solid var(--fg);outline-offset:2px}
+.pill{flex:none;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:8px 16px;color:var(--fg);font-weight:500;font-size:14px}
+.pill.back{align-self:flex-start}
+#home{display:flex;flex-direction:column;gap:20px}
+
+[data-kind="gym"]{--plate:var(--plate-gym);--ink:var(--ink-gym)}
+[data-kind="diet"]{--plate:var(--plate-diet);--ink:var(--ink-diet)}
+[data-kind="cardio"]{--plate:var(--plate-cardio);--ink:var(--ink-cardio)}
+[data-kind="body"]{--plate:var(--plate-body);--ink:var(--ink-body)}
+[data-kind="settings"],[data-kind="plan"]{--plate:var(--plate-settings);--ink:var(--ink-settings)}
+
+.week{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+.week .cap{grid-column:1/-1;margin:0;font-size:13px;color:var(--muted)}
+.wd{display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 0;border-radius:14px;background:var(--surface);border:1px solid var(--line);font-size:12px;color:var(--muted)}
+.wd b{font-size:16px;color:var(--fg);font-variant-numeric:tabular-nums}
+.wd.on{background:var(--plate-diet);border-color:var(--plate-diet);color:var(--on-plate)}
+.wd.on b{color:var(--on-plate)}
+.wd.now{outline:2px solid var(--fg);outline-offset:1px}
+
+.tiles{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.tile{display:flex;flex-direction:column;align-items:flex-start;gap:14px;min-width:0;min-height:150px;text-align:left;border:1px solid var(--line);border-radius:22px;padding:18px;color:var(--fg);box-shadow:var(--shadow);
+  background:linear-gradient(165deg,color-mix(in srgb,var(--plate) 18%,var(--surface)),var(--surface) 70%)}
+.ic{flex:none;width:44px;height:44px;border-radius:14px;background:var(--plate);color:var(--on-plate);display:grid;place-items:center}
+.ic svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.tile .txt{display:flex;flex-direction:column;gap:4px;margin-top:auto;min-width:0}
+.tile .name{font-family:var(--display);font-weight:700;font-size:30px;line-height:1;text-transform:uppercase;letter-spacing:.02em}
+.tile .today{font-size:14px;color:var(--muted);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.tile[data-kind="plan"]{grid-column:1/-1;flex-direction:row;align-items:center;min-height:0;padding:22px 20px;border:0;color:var(--on-plate);background:linear-gradient(135deg,var(--hero-a),var(--hero-b))}
+.tile[data-kind="plan"] .ic{background:color-mix(in srgb,var(--on-plate) 16%,transparent)}
+.tile[data-kind="plan"] .txt{flex:1;margin-top:0}
+.tile[data-kind="plan"] .today{color:var(--on-plate);opacity:.85}
+.disc{flex:none;width:60px;height:60px;border-radius:50%;border:3px solid var(--on-plate);opacity:.55;display:grid;place-items:center}
+.disc::after{content:"";width:16px;height:16px;border-radius:50%;border:3px solid var(--on-plate)}
+@media (hover:hover){.tile{transition:transform .12s}.tile:hover{transform:translateY(-2px)}}
+@media (prefers-reduced-motion:reduce){.tile{transition:none}}
+
+section{display:flex;flex-direction:column;gap:20px}
+.head h2{font-size:46px;text-transform:uppercase;color:var(--ink)}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(104px,1fr));gap:10px}
+.stat{min-width:0;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:14px}
+.stat b{display:block;font-family:var(--display);font-size:32px;line-height:1;color:var(--ink);font-variant-numeric:tabular-nums}
+.stat span{display:block;margin-top:4px;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.06em}
+
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:9px 16px;font-weight:500}
+.chip[aria-pressed="true"]{background:var(--plate);border-color:var(--plate);color:var(--on-plate)}
+.group h3{margin:0 0 10px;font-size:17px}
+
+form{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;background:var(--surface);border:1px solid var(--line);border-radius:22px;padding:18px;box-shadow:var(--shadow)}
+form h3{grid-column:1/-1;margin:0;font-size:17px}
+form label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted);min-width:0}
+form label.wide,form .hint{grid-column:1/-1}
+.hint{margin:0;font-size:14px;color:var(--muted)}
+input{font:inherit;color:var(--fg);background:var(--surface2);border:1px solid var(--line);border-radius:12px;padding:12px;width:100%;min-width:0}
+.add{grid-column:1/-1;border:0;border-radius:14px;padding:14px;background:var(--plate,var(--plate-settings));color:var(--on-plate);font-weight:600}
+form .pill{grid-column:1/-1}
+.msg{grid-column:1/-1;margin:0;font-size:14px;color:var(--ink,var(--fg))}
+
+.log{display:flex;flex-direction:column;gap:16px}
+.day h3{margin:0 0 8px;font-size:13px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.dayhead{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:8px}
+.dayhead h3{margin:0}
+.rows{list-style:none;margin:0;padding:0 16px;background:var(--surface);border:1px solid var(--line);border-radius:16px}
+.rows li{display:flex;align-items:center;flex-wrap:wrap;gap:4px 12px;padding:12px 0;border-bottom:1px solid var(--line)}
+.rows li:last-child{border-bottom:0}
+.rows .what{flex:1;min-width:0;overflow-wrap:anywhere;font-weight:500}
+.rows .nums{color:var(--muted);font-variant-numeric:tabular-nums;font-size:14px}
+.rows button{background:none;border:0;color:var(--ink,var(--muted));padding:4px 6px;font-size:13px;font-weight:500}
+.chip{color:var(--fg)}
+.add:disabled{opacity:.5;cursor:not-allowed}
+.card{display:flex;flex-direction:column;gap:12px;background:var(--surface);border:1px solid var(--line);border-radius:22px;padding:18px;box-shadow:var(--shadow)}
+.card h3{margin:0;font-size:26px;line-height:1;font-family:var(--display);text-transform:uppercase;letter-spacing:.02em;min-width:0;overflow-wrap:anywhere}
+.card .dayhead{margin:0}
+.tag{flex:none;font-size:12px;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:2px 10px}
+.setrow{display:grid;grid-template-columns:28px 1fr 1fr 44px;gap:8px;align-items:center}
+.setrow.headrow{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.sn{font-family:var(--display);font-size:22px;text-align:center;font-variant-numeric:tabular-nums}
+.tick{width:44px;height:44px;border-radius:14px;border:2px solid var(--line);background:var(--surface2);font-size:20px;font-weight:700;color:var(--on-plate)}
+.tick[aria-pressed="true"]{background:var(--plate-diet);border-color:var(--plate-diet)}
+.setrow.done input{border-color:var(--plate-diet)}
+.pb{grid-column:2/-1;font-size:13px;font-weight:600;color:var(--ink-body)}
+.prog{display:flex;flex-direction:column;gap:6px;font-weight:600}
+.bar{height:8px;border-radius:999px;background:var(--line);overflow:hidden}
+.bar i{display:block;height:100%;background:var(--plate);border-radius:999px}
+.rest{display:flex;flex-wrap:wrap;align-items:center;gap:8px;background:linear-gradient(135deg,var(--hero-a),var(--hero-b));color:var(--on-plate);border-radius:18px;padding:14px 16px}
+.rest b{flex:1 1 100%;font-family:var(--display);font-size:28px;line-height:1;font-variant-numeric:tabular-nums}
+.btnrow{display:flex;flex-wrap:wrap;gap:8px}
+.sugg{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
+.sugg small{color:var(--muted);font-size:13px}
+.ownrow{display:flex;gap:8px}
+.ownrow input{flex:1}
+.empty,.note{color:var(--muted);margin:0}
+.note{font-size:14px}
+</style>
+
+<div class="wrap">
+  <div id="home">
+    <header class="top">
+      <div>
+        <h1>Ze Gym</h1>
+        <p class="sub" id="dateline"></p>
+      </div>
+      <button class="pill" type="button" id="open-settings">Settings</button>
+    </header>
+    <div class="week" id="week"></div>
+    <div id="setup" hidden></div>
+    <div class="tiles" id="tiles"></div>
+  </div>
+  <section id="detail" hidden></section>
+  <p class="note" id="note" hidden></p>
+</div>
+
+<script>
+const KINDS = {
+  gym:    {label:"Gym",    name:["Exercise","Bench press"], nums:[["weight","Weight (kg)"],["sets","Sets"],["reps","Reps"]]},
+  diet:   {label:"Diet",   name:["Meal or drink","Paneer rice bowl"], nums:[["kcal","Calories (kcal)"],["protein","Protein (g)"],["fiber","Fiber (g)"],["waterL","Water (L)"]]},
+  cardio: {label:"Cardio", name:["Activity","Treadmill run"], nums:[["minutes","Minutes"],["km","Distance (km)"]]},
+  body:   {label:"Body",   nums:[["kg","Weight (kg)"]]}
+};
+const ADULT = 21;  // above this age, height is asked once only
+const fmt = n => (Math.round(n*10)/10).toLocaleString();
+const fmt2 = n => (Math.round(n*100)/100).toLocaleString();
+const litres = e => (+e.waterL||0) + (+e.water||0)/1000;   // `water` (ml) is the older field
+const CREATINE = [3,5,6,10];
+const dayKey =(d=new Date()) => d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+const el = (tag, props={}, ...kids) => { const e=document.createElement(tag); Object.assign(e,props); kids.forEach(k=>k!=null&&e.append(k)); return e; };
+const num = (v,lo,hi) => { const n=parseFloat(v); return isFinite(n)&&n>=lo&&n<=hi ? n : null; };
+
+let entries = [];           // {id, kind, date, name, ...numbers, ts}
+let profile = {age:null, ageSetOn:null, heightCm:null};
+let profileReady = false;
+let col = null, pdoc = null; // db refs, when saving is available
+let current = null;          // open view: a kind, "settings", or null for home
+let editingId = null;
+const MUSCLES = ["Chest","Back","Shoulders","Biceps","Triceps","Forearms","Abs","Quads","Hamstrings","Glutes","Calves"];
+const ICONS = {
+  plan:'<svg viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="16" rx="2"/><path d="M9 3h6v4H9zM9 12h6M9 16h4"/></svg>',
+  gym:'<svg viewBox="0 0 24 24"><path d="M3 9v6M6 6v12M18 6v12M21 9v6M6 12h12"/></svg>',
+  diet:'<svg viewBox="0 0 24 24"><path d="M12 8c-3-2-7 0-7 5 0 4 3 8 5 8 1 0 1.5-.5 2-.5s1 .5 2 .5c2 0 5-4 5-8 0-5-4-7-7-5zM12 8c0-2 1-4 3-5"/></svg>',
+  cardio:'<svg viewBox="0 0 24 24"><path d="M2 12h5l2-6 4 12 2-6h7"/></svg>',
+  body:'<svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="4"/><path d="M8.5 10a5 5 0 0 1 7 0M12 9l1.5 3"/></svg>'
+};
+let plan = {muscles:[], workout:null};   // today's chosen muscle groups
+let planDoc = null, saving = false, dirty = false;
+let plansByDate = {};        // every saved day, for "last time" and personal bests
+let activeEx = null;         // exercise open in the workout
+let restEnd = 0, restSecs = 90;
+try{ restSecs = +localStorage.getItem("zg-rest") || 90; }catch(_){}
+const SUGGEST = {
+  Chest:["Bench press","Incline dumbbell press","Cable flys","Chest dips","Push-ups"],
+  Back:["Lat pulldown","Seated cable row","Barbell row","Pull-ups","Deadlift"],
+  Shoulders:["Overhead press","Lateral raises","Rear delt flys","Face pulls"],
+  Biceps:["Barbell curl","Dumbbell curl","Hammer curl","Preacher curl"],
+  Triceps:["Triceps pushdown","Skull crushers","Overhead triceps extension","Close-grip bench press"],
+  Forearms:["Wrist curls","Reverse curls","Farmer's carry"],
+  Abs:["Crunches","Hanging leg raises","Plank","Cable crunch"],
+  Quads:["Squat","Leg press","Leg extension","Lunges"],
+  Hamstrings:["Romanian deadlift","Leg curl","Good mornings"],
+  Glutes:["Hip thrust","Glute bridge","Bulgarian split squat"],
+  Calves:["Standing calf raise","Seated calf raise"]
+};
+const uid = () => Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+const doneSets = ex => ex.sets.filter(s=>s.done);
+const setText = s => fmt(+s.kg||0)+" kg × "+(s.reps||0);
+
+// On-device store with the same calls the page uses on the shared store. Backed by localStorage.
+function localDb(){
+  const KEY = "zegym-v1"; let store = {}, ok = true; const subs = [];
+  try{ store = JSON.parse(localStorage.getItem(KEY) || "{}") || {}; }catch(_){ ok = false; }
+  const persist = () => { try{ localStorage.setItem(KEY,JSON.stringify(store)); }catch(_){ ok = false; } subs.forEach(f=>f()); };
+  const snapDoc = (c,id) => ({id, exists:!!(store[c] && store[c][id]), data:()=>store[c] && store[c][id]});
+  const docRef = (c,id) => ({id, path:c+"/"+id,
+    set: async d => { (store[c] = store[c] || {})[id] = JSON.parse(JSON.stringify(d)); persist(); },
+    delete: async () => { if(store[c]) delete store[c][id]; persist(); },
+    onSnapshot: cb => { const f = () => cb(snapDoc(c,id)); subs.push(f); setTimeout(f,0); return () => {}; }});
+  const colRef = c => { let ord = null; const q = {
+    doc: id => docRef(c,id || uid()),
+    add: async d => { const r = docRef(c,uid()); await r.set(d); return r; },
+    orderBy: (f,dir) => { ord = [f,dir]; return q; },
+    limit: () => q,
+    onSnapshot: cb => { const f = () => {
+        const docs = Object.keys(store[c] || {}).sort().map(id=>snapDoc(c,id));
+        if(ord) docs.sort((a,b)=>((+a.data()[ord[0]]||0)-(+b.data()[ord[0]]||0))*(ord[1]==="desc"?-1:1));
+        cb({docs});
+      }; subs.push(f); setTimeout(f,0); return () => {}; }};
+    return q; };
+  return {ok:()=>ok, collection:colRef, doc:p=>{ const i = p.lastIndexOf("/"); return docRef(p.slice(0,i),p.slice(i+1)); }};
+}
+function normPlan(d){
+  d = d ? JSON.parse(JSON.stringify(d)) : {};
+  const w = d.workout && Array.isArray(d.workout.exercises) ? d.workout : null;
+  if(w) w.exercises.forEach(e=>{ e.sets = Array.isArray(e.sets) ? e.sets : []; });
+  return {muscles: Array.isArray(d.muscles) ? MUSCLES.filter(m=>d.muscles.includes(m)) : [], workout:w};
+}
+// Saves today's plan. Rapid changes collapse into one write at a time.
+async function savePlan(){
+  plansByDate[dayKey()] = plan;
+  if(!planDoc) return;
+  dirty = true; if(saving) return; saving = true;
+  while(dirty){ dirty = false; try{ await planDoc.set(JSON.parse(JSON.stringify({muscles:plan.muscles,workout:plan.workout||null}))); }catch(_){} }
+  saving = false;
+}
+// Done sets from the most recent earlier day, and the top weight before today.
+function history(name){
+  const key = name.trim().toLowerCase(), today = dayKey(); let last = null, best = 0;
+  Object.keys(plansByDate).filter(d=>d<today).sort().reverse().forEach(d=>{
+    const w = plansByDate[d] && plansByDate[d].workout; if(!w) return;
+    (w.exercises||[]).forEach(ex=>{
+      if((ex.name||"").trim().toLowerCase()!==key) return;
+      const ds = (ex.sets||[]).filter(s=>s.done); if(!ds.length) return;
+      if(!last) last = ds;
+      ds.forEach(s=>{ if(+s.kg>best) best = +s.kg; });
+    });
+  });
+  return {last,best};
+}
+function workoutStats(w){
+  let sets = 0, vol = 0, done = 0, pbs = 0;
+  w.exercises.forEach(ex=>{
+    const h = history(ex.name), ds = doneSets(ex);
+    if(ex.done) done++;
+    ds.forEach(s=>{ sets++; vol += (+s.kg||0)*(+s.reps||0); });
+    if(h.best>0 && ds.some(s=>+s.kg>h.best)) pbs++;
+  });
+  return {sets,vol,done,pbs};
+}
+function tickRest(){
+  const c = document.getElementById("rest-clock"); if(!c) return;
+  const left = Math.ceil((restEnd-Date.now())/1000);
+  c.textContent = left>0 ? "Rest "+Math.floor(left/60)+":"+String(left%60).padStart(2,"0") : "Rest over. Next set.";
+}
+setInterval(tickRest,250);
+const statsRow = items => el("div",{className:"stats"},...items.map(([v,l])=>el("div",{className:"stat"},el("b",{textContent:v}),el("span",{textContent:l}))));
+function addExercise(name,group){
+  const h = history(name), first = h.last && h.last[0], id = uid();
+  plan.workout.exercises.push({id,name,group,done:false,sets:[{kg:first?+first.kg||0:null,reps:null,done:false}]});
+  activeEx = id; savePlan();
+}
+
+function renderGym(sec,keep){
+  const w = plan.workout;
+  const say = (m,t) => { m.textContent = t; m.hidden = false; };
+  if(!w){
+    const start = el("button",{className:"add",type:"button",id:"start-workout",textContent:"Start workout"});
+    start.disabled = !plan.muscles.length;
+    start.onclick = () => { plan.workout = {startedAt:Date.now(),finishedAt:null,exercises:[]}; savePlan(); render(); };
+    sec.append(muscleChips(), el("p",{className:"note",textContent:plan.muscles.length ? "Next, start the workout and pick your exercises." : "Tap the groups you're training today, then start the workout."}), start);
+    return;
+  }
+  if(w.finishedAt){
+    const st = workoutStats(w), mins = Math.max(1,Math.round((w.finishedAt-w.startedAt)/60000));
+    const ul = el("ul",{className:"rows"});
+    w.exercises.forEach(ex=>ul.append(el("li",{},el("span",{className:"what",textContent:ex.name}),el("span",{className:"nums",textContent:doneSets(ex).map(setText).join(", ")}))));
+    const re = el("button",{className:"pill back",type:"button",id:"reopen",textContent:"Reopen workout to edit"});
+    re.onclick = () => { w.finishedAt = null; savePlan(); render(); };
+    sec.append(el("p",{className:"sub",textContent:"Workout done for today."+(plan.muscles.length?" "+plan.muscles.join(", ")+".":"")}),
+      statsRow([[st.done,"exercises"],[st.sets,"sets"],[fmt(st.vol),"kg lifted"],[mins,mins===1?"minute":"minutes"],[st.pbs,"personal bests"]]),
+      el("div",{className:"day"},el("h3",{textContent:"What you did"}),ul), re);
+    return;
+  }
+
+  const total = w.exercises.length, nDone = w.exercises.filter(e=>e.done).length;
+  const cur = w.exercises.find(e=>e.id===activeEx) || w.exercises.find(e=>!e.done) || null;
+  if(total){
+    const fill = el("i"); fill.style.width = (nDone/total*100)+"%";
+    sec.append(el("div",{className:"prog"},el("span",{textContent:cur ? "Exercise "+(w.exercises.indexOf(cur)+1)+" of "+total+" · "+nDone+" done" : "All "+total+" exercises done"}),el("div",{className:"bar"},fill)));
+  }
+  if(restEnd){
+    const box = el("div",{className:"rest"},el("b",{id:"rest-clock",textContent:"Rest"}));
+    [60,90,120].forEach(sv=>{
+      const c = el("button",{className:"chip",type:"button",id:"rest-"+sv,textContent:sv+" s"}); c.setAttribute("aria-pressed",restSecs===sv);
+      c.onclick = () => { restSecs = sv; try{ localStorage.setItem("zg-rest",sv); }catch(_){} restEnd = Date.now()+sv*1000; render(); };
+      box.append(c);
+    });
+    const skip = el("button",{className:"pill",type:"button",id:"rest-skip",textContent:"Skip rest"}); skip.onclick = () => { restEnd = 0; render(); };
+    box.append(skip); sec.append(box);
+  }
+
+  if(cur){
+    const h = history(cur.name), card = el("div",{className:"card"}), cmsg = el("p",{className:"msg",hidden:true});
+    card.append(el("div",{className:"dayhead"},el("h3",{textContent:cur.name}),el("span",{className:"tag",textContent:cur.group||""})),
+      el("p",{className:"hint",textContent:h.last ? "Last time: "+h.last.map(setText).join(", ") : "First time logging this exercise."}),
+      el("div",{className:"setrow headrow"},el("span",{textContent:"Set"}),el("span",{textContent:"Weight (kg)"}),el("span",{textContent:"Reps"}),el("span",{textContent:"Done"})));
+    cur.sets.forEach((s,i)=>{
+      const mk = (f,label) => {
+        const id = "s-"+cur.id+"-"+i+"-"+f, inp = el("input",{id,...numOpts}); inp.setAttribute("aria-label","Set "+(i+1)+" "+label);
+        const v = keep[id]; inp.value = v!==undefined && v!=="" ? v : (s[f]==null ? "" : s[f]);
+        inp.onchange = () => { s[f] = num(inp.value,0,2000); savePlan(); };
+        return inp;
+      };
+      const kg = mk("kg","weight in kg"), reps = mk("reps","reps");
+      const tick = el("button",{className:"tick",type:"button",id:"t-"+cur.id+"-"+i,textContent:s.done?"✓":""});
+      tick.setAttribute("aria-pressed",!!s.done); tick.setAttribute("aria-label","Set "+(i+1)+" done");
+      tick.onclick = () => {
+        if(s.done) s.done = false;
+        else{
+          const k = kg.value.trim()==="" ? 0 : num(kg.value,0,2000), r = num(reps.value,1,2000);
+          if(k==null || r==null || r%1){ say(cmsg,"Enter the reps for set "+(i+1)+" first. Leave weight empty for bodyweight."); reps.focus(); return; }
+          s.kg = k; s.reps = r; s.done = true;
+          if(i===cur.sets.length-1) cur.sets.push({kg:k,reps:null,done:false});
+          else if(cur.sets[i+1].kg==null) cur.sets[i+1].kg = k;
+          restEnd = Date.now()+restSecs*1000;
+        }
+        savePlan(); render();
+      };
+      const rowEl = el("div",{className:"setrow"+(s.done?" done":"")},el("span",{className:"sn",textContent:i+1}),kg,reps,tick);
+      if(s.done && h.best>0 && +s.kg>h.best) rowEl.append(el("span",{className:"pb",textContent:"Personal best. Your previous top weight was "+fmt(h.best)+" kg."}));
+      card.append(rowEl);
+    });
+    const addSet = el("button",{className:"pill",type:"button",id:"add-set",textContent:"Add set"});
+    addSet.onclick = () => { const l = cur.sets[cur.sets.length-1]; cur.sets.push({kg:l?l.kg:null,reps:null,done:false}); savePlan(); render(); };
+    const doneBtn = el("button",{className:"add",type:"button",id:"ex-done",textContent:"Exercise done"});
+    doneBtn.onclick = () => {
+      if(!doneSets(cur).length){ say(cmsg,"Tick at least one set first."); return; }
+      cur.sets = doneSets(cur); cur.done = true; activeEx = null; restEnd = 0;
+      savePlan(); sec.replaceChildren(); render(); window.scrollTo(0,0);
+    };
+    card.append(el("div",{className:"btnrow"},addSet), doneBtn, cmsg);
+    sec.append(card);
+  } else sec.append(el("p",{className:"note",textContent:total ? "Every exercise is done. Add another below, or finish the workout." : "Pick your first exercise below."}));
+
+  if(total){
+    const ul = el("ul",{className:"rows"});
+    w.exercises.forEach(ex=>{
+      const n = doneSets(ex).length;
+      const op = el("button",{type:"button",textContent:"Open"}); op.setAttribute("aria-label","Open "+ex.name);
+      op.onclick = () => { activeEx = ex.id; sec.replaceChildren(); render(); window.scrollTo(0,0); };
+      const rm = el("button",{type:"button",textContent:"Remove"}); rm.setAttribute("aria-label","Remove "+ex.name);
+      rm.onclick = () => { w.exercises = w.exercises.filter(x=>x!==ex); if(activeEx===ex.id) activeEx = null; savePlan(); sec.replaceChildren(); render(); };
+      ul.append(el("li",{},el("span",{className:"what",textContent:ex.name}),el("span",{className:"nums",textContent:(ex.done?"Done · ":ex===cur?"Now · ":"")+n+(n===1?" set":" sets")}),ex===cur?null:op,rm));
+    });
+    sec.append(el("div",{className:"day"},el("h3",{textContent:"Today's exercises"}),ul));
+  }
+
+  const have = new Set(w.exercises.map(e=>e.name.toLowerCase()));
+  const sug = el("div",{className:"group"},el("h3",{textContent:"Add an exercise"}));
+  plan.muscles.forEach(m=>{
+    const chips = el("div",{className:"chips"});
+    SUGGEST[m].filter(n=>!have.has(n.toLowerCase())).forEach(n=>{
+      const c = el("button",{className:"chip",type:"button",textContent:n});
+      c.onclick = () => { addExercise(n,m); sec.replaceChildren(); render(); window.scrollTo(0,0); };
+      chips.append(c);
+    });
+    if(chips.children.length) sug.append(el("div",{className:"sugg"},el("small",{textContent:m}),chips));
+  });
+  const own = el("input",{id:"own-ex",type:"text",maxLength:60,autocomplete:"off",placeholder:"Or type your own exercise"}); own.setAttribute("aria-label","Your own exercise");
+  if(keep["own-ex"]) own.value = keep["own-ex"];
+  const ownBtn = el("button",{className:"pill",type:"button",id:"own-add",textContent:"Add"});
+  const addOwn = () => { const n = own.value.trim(); if(!n){ own.focus(); return; } addExercise(n,plan.muscles[0]||"Other"); sec.replaceChildren(); render(); window.scrollTo(0,0); };
+  ownBtn.onclick = addOwn; own.onkeydown = e => { if(e.key==="Enter"){ e.preventDefault(); addOwn(); } };
+  sug.append(el("div",{className:"ownrow"},own,ownBtn));
+  sec.append(muscleChips(), sug);
+
+  const fmsg = el("p",{className:"msg",hidden:true});
+  const fin = el("button",{className:"add",type:"button",id:"finish",textContent:"Finish workout"});
+  fin.onclick = () => {
+    if(!w.exercises.some(e=>doneSets(e).length)){ say(fmsg,"Tick at least one set before finishing."); return; }
+    w.exercises.forEach(e=>{ e.sets = doneSets(e); e.done = true; });
+    w.exercises = w.exercises.filter(e=>e.sets.length);
+    w.finishedAt = Date.now(); restEnd = 0; activeEx = null;
+    savePlan(); sec.replaceChildren(); render(); window.scrollTo(0,0);
+  };
+  sec.append(fin,fmsg);
+  tickRest();
+}
+
+function toggleMuscle(m){
+  const next = plan.muscles.includes(m) ? plan.muscles.filter(x=>x!==m) : [...plan.muscles,m];
+  plan = {...plan, muscles: MUSCLES.filter(x=>next.includes(x))};
+  savePlan(); render();
+}
+function muscleChips(){
+  const wrap = el("div",{className:"chips"});
+  MUSCLES.forEach(m=>{
+    const b = el("button",{className:"chip",type:"button",id:"m-"+m.toLowerCase(),textContent:m});
+    b.setAttribute("aria-pressed",plan.muscles.includes(m));
+    b.onclick = () => toggleMuscle(m);
+    wrap.append(b);
+  });
+  return el("div",{className:"group"},el("h3",{textContent:"Muscle groups for today"}),wrap);
+}
+function row(e,onEdit){
+  const ed = el("button",{type:"button",textContent:"Edit"}); ed.setAttribute("aria-label","Edit "+e.name);
+  ed.onclick = onEdit;
+  const rm = el("button",{type:"button",textContent:"Remove"}); rm.setAttribute("aria-label","Remove "+e.name);
+  rm.onclick = async () => { try{ await removeEntry(e.id); }catch(_){} };
+  return el("li",{},el("span",{className:"what",textContent:e.name}),el("span",{className:"nums",textContent:numsText(e)}),ed,rm);
+}
+function renderPlan(sec,keep){
+  sec.append(el("div",{className:"head"},el("h2",{textContent:"Today's plan"}),
+    el("p",{className:"sub",textContent:new Date().toLocaleDateString(undefined,{weekday:"long",day:"numeric",month:"long"})})),
+    muscleChips());
+  // Today's weight: saved as today's weigh-in in the Body log.
+  const tw = entries.filter(e=>e.kind==="body" && e.date===dayKey()).sort((a,b)=>b.ts-a.ts)[0], lw = latestWeight();
+  const wf = el("form",{noValidate:true}), wmsg = el("p",{className:"msg",hidden:true});
+  wf.append(el("h3",{textContent:"Today's weight"}),
+    field(keep,"plan-kg","Weight (kg)",{...numOpts,placeholder:!tw&&lw?"Last: "+fmt(lw.kg):""},tw&&tw.kg),
+    el("button",{className:"add",type:"submit",textContent:tw?"Update weight":"Save weight"}), wmsg);
+  wf.onsubmit = async ev => {
+    ev.preventDefault();
+    const kg = num(wf.elements.kg.value,20,400);
+    if(kg==null){ wmsg.textContent = "Enter your weight in kilograms, between 20 and 400."; wmsg.hidden = false; wf.elements.kg.focus(); return; }
+    try{
+      if(tw){ const {id,...rest} = tw; await updateEntry(id,{...rest,kg}); }
+      else await addEntry({kind:"body",date:dayKey(),ts:Date.now(),name:"Weight",kg});
+      const m = document.querySelector("#plan-kg")?.form.querySelector(".msg");
+      if(m){ m.textContent = "Saved "+fmt(kg)+" kg for today."; m.hidden = false; }
+    }catch(e){ wmsg.textContent = saveError(e); wmsg.hidden = false; }
+  };
+  sec.append(wf);
+  const w = plan.workout, open = el("button",{className:"pill",type:"button",textContent:w?"Open":"Start"});
+  open.setAttribute("aria-label",w?"Open workout":"Start workout");
+  open.onclick = () => go("gym");
+  const wl = el("ul",{className:"rows"});
+  if(w) w.exercises.forEach(ex=>{
+    const ed = el("button",{type:"button",textContent:"Edit"}); ed.setAttribute("aria-label","Edit "+ex.name);
+    ed.onclick = () => { if(w.finishedAt){ w.finishedAt = null; savePlan(); } activeEx = ex.id; go("gym"); };
+    wl.append(el("li",{},el("span",{className:"what",textContent:ex.name}),el("span",{className:"nums",textContent:doneSets(ex).length ? doneSets(ex).map(setText).join(", ") : "Not started"}),ed));
+  });
+  sec.append(el("div",{className:"day"},el("div",{className:"dayhead"},el("h3",{textContent:"Workout"+(w&&w.finishedAt?" · done":"")}),open),
+    w&&w.exercises.length ? wl : el("p",{className:"empty",textContent:"No exercises yet."})));
+  for(const kind in KINDS){
+    if(kind==="gym") continue;   // gym is the workout above
+    const list = entries.filter(e=>e.kind===kind && e.date===dayKey()).sort((a,b)=>a.ts-b.ts);
+    const add = el("button",{className:"pill",type:"button",textContent:"Add"}); add.setAttribute("aria-label","Add to "+KINDS[kind].label);
+    add.onclick = () => go(kind);
+    const ul = el("ul",{className:"rows"}); list.forEach(e=>ul.append(row(e,()=>go(kind,e.id))));
+    sec.append(el("div",{className:"day"},el("div",{className:"dayhead"},el("h3",{textContent:KINDS[kind].label}),add),
+      list.length ? ul : el("p",{className:"empty",textContent:"Nothing logged today."})));
+  }
+}
+
+function currentAge(){
+  if(profile.age==null) return null;
+  const since = profile.ageSetOn ? (Date.now()-new Date(profile.ageSetOn+"T00:00").getTime())/31557600000 : 0;
+  return profile.age + Math.max(0,Math.floor(since));
+}
+const heightLocked = () => currentAge()!=null && currentAge()>ADULT && profile.heightCm!=null;
+const latestWeight = () => entries.filter(e=>e.kind==="body").sort((a,b)=>b.ts-a.ts)[0] || null;
+const bmi = kg => profile.heightCm ? kg/Math.pow(profile.heightCm/100,2) : null;
+
+async function saveProfile(patch){
+  profile = {...profile,...patch};
+  if(pdoc) await pdoc.set(profile); else render();
+}
+async function addEntry(data){
+  if(col) await col.add(data); else { entries.unshift({id:"m"+data.ts+Math.random(),...data}); render(); }
+}
+async function updateEntry(id,data){
+  if(col) await col.doc(id).set(data); else { entries = entries.map(e=>e.id===id?{id,...data}:e); render(); }
+}
+async function removeEntry(id){
+  if(col) await col.doc(id).delete(); else { entries = entries.filter(e=>e.id!==id); render(); }
+}
+const saveError = e => e && e.code==="quota_exceeded" ? "The log is full. Remove some old entries, then try again." : "That wasn't saved. Try again.";
+
+function totals(kind){
+  if(kind==="body"){
+    const w = latestWeight(), b = w && bmi(w.kg);
+    return [[w?fmt(w.kg):"–","kg, latest"],[b?fmt(b):"–","BMI"],[profile.heightCm?fmt(profile.heightCm):"–","cm tall"]];
+  }
+  const list = entries.filter(e=>e.kind===kind && e.date===dayKey());
+  const sum = f => list.reduce((s,e)=>s+(+e[f]||0),0);
+  if(kind==="gym") return [[fmt(sum("sets")),"sets today"],[fmt(list.reduce((s,e)=>s+(+e.weight||0)*(+e.sets||0)*(+e.reps||0),0)),"kg lifted today"]];
+  if(kind==="diet") return [[fmt(sum("kcal")),"kcal today"],[fmt(sum("protein")),"g protein today"],[fmt(sum("fiber")),"g fiber today"],[fmt2(list.reduce((s,e)=>s+litres(e),0)),"L water today"],[fmt(sum("creatine")),"g creatine today"]];
+  return [[fmt(sum("minutes")),"min today"],[fmt(sum("km")),"km today"]];
+}
+function tileText(kind){
+  if(kind==="body"){
+    const w = latestWeight(); if(!w) return "Add your weight";
+    const b = bmi(w.kg); return "Latest: "+fmt(w.kg)+" kg"+(b?" · BMI "+fmt(b):"");
+  }
+  if(kind==="gym" && plan.workout){
+    const w = plan.workout, n = w.exercises.length;
+    if(w.finishedAt) return "Workout done · "+n+(n===1?" exercise":" exercises");
+    if(n) return w.exercises.filter(e=>e.done).length+" of "+n+" exercises done";
+    return "Workout started";
+  }
+  if(kind==="gym") return plan.muscles.length ? plan.muscles.join(" · ") : "Pick today's muscle groups";
+  if(!entries.some(e=>e.kind===kind && e.date===dayKey())) return "Nothing logged today";
+  return totals(kind).slice(0,2).map(x=>x[0]+" "+x[1].replace(" today","")).join(" · ");
+}
+function numsText(e){
+  if(e.kind==="gym") return fmt(e.weight||0)+" kg · "+(e.sets||0)+" × "+(e.reps||0);
+  if(e.kind==="diet"){
+    const p = [];
+    const w = litres(e);
+    if(e.kcal || e.protein || !(w || e.fiber || e.creatine)) p.push(fmt(e.kcal||0)+" kcal", fmt(e.protein||0)+" g protein");
+    if(e.fiber) p.push(fmt(e.fiber)+" g fiber");
+    if(w) p.push(fmt2(w)+" L water");
+    if(e.creatine) p.push(fmt(e.creatine)+" g creatine");
+    return p.join(" · ");
+  }
+  if(e.kind==="body") return fmt(e.kg||0)+" kg"+(e.heightCm?" · "+fmt(e.heightCm)+" cm":"");
+  return fmt(e.minutes||0)+" min · "+fmt(e.km||0)+" km";
+}
+
+// Builds a labelled input. `keep` holds what was typed before a re-render.
+function field(keep,id,label,opts,value){
+  const i = el("input",{id,name:id.split("-").pop(),...opts});
+  if(keep[id]!==undefined && keep[id]!=="") i.value = keep[id]; else if(value!=null) i.value = value;
+  return el("label",{className:opts.type==="number"?"":"wide"},label,i);
+}
+const numOpts = {type:"number",min:"0",step:"any",inputMode:"decimal"};
+
+// Age, height and (optionally) weight. Used for first-time setup and for Settings.
+function profileForm(prefix,keep,{title,hint,button,done}){
+  const form = el("form",{noValidate:true});
+  const w = latestWeight();
+  form.append(el("h3",{textContent:title}), hint?el("p",{className:"hint",textContent:hint}):null,
+    field(keep,prefix+"-gender","Gender",{type:"text",maxLength:40,autocomplete:"off",placeholder:"Type it in your own words"},profile.gender),
+    field(keep,prefix+"-age","Age (years)",numOpts,currentAge()),
+    field(keep,prefix+"-height","Height (cm)",numOpts,profile.heightCm),
+    field(keep,prefix+"-kg","Weight (kg)",numOpts,w&&w.kg));
+  const msg = el("p",{className:"msg",hidden:true});
+  form.append(el("button",{className:"add",type:"submit",textContent:button}),msg);
+  form.onsubmit = async ev => {
+    ev.preventDefault();
+    const say = t => { msg.textContent=t; msg.hidden=false; };
+    const F = form.elements, age = num(F.age.value,5,110);
+    if(age==null || age%1){ say("Enter your age in whole years, between 5 and 110."); F.age.focus(); return; }
+    const h = F.height.value.trim()==="" ? null : num(F.height.value,50,260);
+    if(F.height.value.trim()!=="" && h==null){ say("Enter your height in centimetres, between 50 and 260."); F.height.focus(); return; }
+    const kg = F.kg.value.trim()==="" ? null : num(F.kg.value,20,400);
+    if(F.kg.value.trim()!=="" && kg==null){ say("Enter your weight in kilograms, between 20 and 400."); F.kg.focus(); return; }
+    try{
+      const patch = {heightCm:h, gender:F.gender.value.trim().slice(0,40) || null};
+      if(age!==currentAge()){ patch.age = age; patch.ageSetOn = dayKey(); }
+      await saveProfile(patch);
+      if(kg!=null && (!w || kg!==w.kg)){
+        if(w && w.date===dayKey()){ const {id,...rest} = w; await updateEntry(id,{...rest,kg}); }
+        else await addEntry({kind:"body",date:dayKey(),ts:Date.now(),name:"Weight",kg});
+      }
+      if(done) done(); else { const m=document.querySelector("#"+prefix+"-age")?.form.querySelector(".msg"); if(m){ m.textContent="Saved."; m.hidden=false; } }
+    }catch(e){ say(saveError(e)); }
+  };
+  return form;
+}
+
+function renderHome(){
+  document.getElementById("dateline").textContent = new Date().toLocaleDateString(undefined,{weekday:"long",day:"numeric",month:"long"})+". What are you logging?";
+  const week = document.getElementById("week");
+  week.replaceChildren(el("p",{className:"cap",textContent:"Last 7 days. Filled days have something logged."}));
+  for(let i=6;i>=0;i--){
+    const d = new Date(); d.setDate(d.getDate()-i);
+    const on = entries.some(e=>e.date===dayKey(d)) || !!(plansByDate[dayKey(d)]||{}).workout;
+    week.append(el("div",{className:"wd"+(i===0?" now":"")+(on?" on":"")},
+      el("span",{textContent:d.toLocaleDateString(undefined,{weekday:"narrow"})}),el("b",{textContent:d.getDate()})));
+  }
+  const setup = document.getElementById("setup");
+  const need = profileReady && profile.age==null;
+  if(need){
+    const keep = {}; setup.querySelectorAll("input").forEach(i=>keep[i.id]=i.value);
+    const focusId = document.activeElement && document.activeElement.id;
+    setup.replaceChildren(profileForm("setup",keep,{title:"First, a few details about you",hint:"You can change any of these later in Settings.",button:"Save my details",done:render}));
+    if(focusId && setup.querySelector("#"+focusId)) document.getElementById(focusId).focus();
+  } else setup.replaceChildren();
+  setup.hidden = !need;
+  const tiles = document.getElementById("tiles"); tiles.replaceChildren();
+  const tile = (kind,label,text) => {
+    const ic = el("span",{className:"ic"}); ic.innerHTML = ICONS[kind];
+    const b = el("button",{className:"tile",type:"button"}, ic,
+      el("span",{className:"txt"},
+        el("span",{className:"name",textContent:label}),
+        el("span",{className:"today",textContent:text})),
+      kind==="plan" ? el("span",{className:"disc"}) : null);
+    b.dataset.kind = kind;
+    b.onclick = () => go(kind);
+    tiles.append(b);
+  };
+  tile("plan","Today's plan", plan.muscles.length ? plan.muscles.join(" · ") : "No muscle groups picked yet");
+  for(const kind in KINDS) tile(kind,KINDS[kind].label,tileText(kind));
+}
+
+function renderSettings(sec,keep){
+  sec.append(el("div",{className:"head"},el("h2",{textContent:"Settings"})),
+    profileForm("set",keep,{title:"Your details",hint:"Changing the weight here updates today's weigh-in, or adds one if you haven't weighed in today.",button:"Save changes"}),
+    el("p",{className:"note",textContent:"To change a past entry, open Gym, Diet, Cardio or Body and choose Edit next to it."}));
+}
+
+function renderKind(sec,keep){
+  const kind = current, K = KINDS[kind];
+  sec.append(el("div",{className:"head"},el("h2",{textContent:K.label})));
+  // Gym is only the day's muscle groups: no exercise form, totals or log.
+  if(kind==="gym"){ renderGym(sec,keep); return; }
+  sec.append(el("div",{className:"stats"}, ...totals(kind).map(([v,l])=>el("div",{className:"stat"},el("b",{textContent:v}),el("span",{textContent:l})))));
+
+  if(kind==="diet"){
+    const glass = el("button",{className:"pill back",type:"button",id:"add-glass",textContent:"+ 0.25 L water"});
+    glass.onclick = async () => { try{ await addEntry({kind:"diet",date:dayKey(),ts:Date.now(),name:"Water",kcal:0,protein:0,fiber:0,waterL:0.25}); }catch(_){} };
+    // Creatine: one dose per day, picked from fixed options. Tapping the chosen one again clears it.
+    const dose = entries.find(e=>e.kind==="diet" && e.date===dayKey() && e.name==="Creatine" && e.creatine>0);
+    const chips = el("div",{className:"chips"});
+    CREATINE.forEach(g=>{
+      const b = el("button",{className:"chip",type:"button",id:"cr-"+g,textContent:g+" g"});
+      b.setAttribute("aria-pressed",!!dose && dose.creatine===g);
+      b.onclick = async () => { try{
+        if(dose && dose.creatine===g) await removeEntry(dose.id);
+        else if(dose){ const {id,...rest} = dose; await updateEntry(id,{...rest,creatine:g}); }
+        else await addEntry({kind:"diet",date:dayKey(),ts:Date.now(),name:"Creatine",kcal:0,protein:0,fiber:0,waterL:0,creatine:g});
+      }catch(_){} };
+      chips.append(b);
+    });
+    sec.append(glass, el("div",{className:"group"},el("h3",{textContent:"Creatine today"}),chips));
+  }
+
+  if(kind==="body" && profileReady && profile.age==null){
+    sec.append(profileForm("first",keep,{title:"First, a few details about you",hint:"You can change any of these later in Settings.",button:"Save my details",done:render}));
+  } else {
+    const editing = editingId && entries.find(e=>e.id===editingId && e.kind===kind);
+    if(!editing) editingId = null;
+    const askHeight = kind==="body" && !heightLocked();
+    const form = el("form",{noValidate:true});
+    if(editing) form.append(el("h3",{textContent:"Editing an entry"}));
+    if(K.name) form.append(field(keep,kind+"-name",K.name[0],{type:"text",placeholder:K.name[1],maxLength:60,autocomplete:"off"},editing&&editing.name));
+    for(const [key,label] of K.nums) form.append(field(keep,kind+"-"+key,label,numOpts,editing&&(key==="waterL"?(litres(editing)||null):editing[key])));
+    if(askHeight) form.append(field(keep,kind+"-heightCm","Height (cm)",numOpts,editing?editing.heightCm:profile.heightCm));
+    if(kind==="body" && !askHeight) form.append(el("p",{className:"hint",textContent:"Height "+fmt(profile.heightCm)+" cm. You're over "+ADULT+", so it's only asked once. Change it in Settings."}));
+    const msg = el("p",{className:"msg",hidden:true});
+    form.append(el("button",{className:"add",type:"submit",textContent:editing?"Save changes":"Add to "+K.label.toLowerCase()+" log"}));
+    if(editing){ const c = el("button",{className:"pill",type:"button",textContent:"Cancel"}); c.onclick=()=>{ editingId=null; sec.replaceChildren(); render(); }; form.append(c); }
+    form.append(msg);
+    form.onsubmit = async ev => {
+      ev.preventDefault();
+      const say = t => { msg.textContent=t; msg.hidden=false; };
+      const F = form.elements;
+      const data = editing ? (({id,...rest})=>rest)(editing) : {kind, date:dayKey(), ts:Date.now()};
+      data.name = K.name ? F.name.value.trim() : "Weight";
+      for(const [key] of K.nums) data[key] = Math.max(0, parseFloat(F[key].value)||0);
+      delete data.water;
+      if(!data.name && kind==="diet" && data.waterL>0) data.name = "Water";
+      if(!data.name){ say("Enter the "+K.name[0].toLowerCase()+" first."); F.name.focus(); return; }
+      if(kind==="body"){
+        if(num(data.kg,20,400)==null){ say("Enter your weight in kilograms, between 20 and 400."); F.kg.focus(); return; }
+        if(askHeight && F.heightCm.value.trim()!==""){
+          const h = num(F.heightCm.value,50,260);
+          if(h==null){ say("Enter your height in centimetres, between 50 and 260."); F.heightCm.focus(); return; }
+          data.heightCm = h;
+        }
+      }
+      try{
+        if(data.heightCm && data.heightCm!==profile.heightCm && !editing) await saveProfile({heightCm:data.heightCm});
+        editingId = null; sec.replaceChildren();
+        if(editing) await updateEntry(editing.id,data); else await addEntry(data);
+        returnTo==="plan" ? go("plan") : render();
+      }catch(e){ say(saveError(e)); }
+    };
+    sec.append(form);
+  }
+
+  const mine = entries.filter(e=>e.kind===kind).sort((a,b)=>b.ts-a.ts);
+  const log = el("div",{className:"log"});
+  if(!mine.length) log.append(el("p",{className:"empty",textContent:kind==="body"?"No weigh-ins yet. Your first one will show up here.":"No "+K.label.toLowerCase()+" entries yet. Your first one will show up here."}));
+  const days = {}; mine.forEach(e=>(days[e.date]=days[e.date]||[]).push(e));
+  for(const d in days){
+    const ul = el("ul",{className:"rows"});
+    days[d].forEach(e=>ul.append(row(e,()=>{ editingId = e.id; sec.replaceChildren(); render(); window.scrollTo(0,0); })));
+    const title = d===dayKey() ? "Today" : new Date(d+"T00:00").toLocaleDateString(undefined,{weekday:"short",day:"numeric",month:"short"});
+    log.append(el("div",{className:"day"},el("h3",{textContent:title}),ul));
+  }
+  sec.append(log);
+}
+
+function renderDetail(){
+  const sec = document.getElementById("detail");
+  const keep = {}; sec.querySelectorAll("input").forEach(i=>keep[i.id]=i.value);
+  const focusId = document.activeElement && document.activeElement.id;
+  sec.dataset.kind = current; sec.replaceChildren();
+  const back = el("button",{className:"pill back",type:"button",textContent:returnTo==="plan"?"← Today's plan":"← All options"}); back.onclick=()=>go(returnTo||"");
+  sec.append(back);
+  current==="settings" ? renderSettings(sec,keep) : current==="plan" ? renderPlan(sec,keep) : renderKind(sec,keep);
+  if(focusId){ const f=document.getElementById(focusId); if(f) f.focus(); }
+}
+
+function render(){
+  const open = !!current;
+  document.getElementById("home").hidden = open;
+  document.getElementById("detail").hidden = !open;
+  open ? renderDetail() : renderHome();
+}
+const valid = k => KINDS[k] || k==="settings" || k==="plan" ? k : null;
+let returnTo = null;   // set when a screen was opened from Today's plan, so Back returns there
+function go(view,editId){ returnTo = current==="plan" && view && view!=="plan" ? "plan" : null; try{ location.hash = view; }catch(_){} editingId=editId||null; document.getElementById("detail").replaceChildren(); current = valid(view); render(); window.scrollTo(0,0); }
+window.addEventListener("hashchange",()=>{ const next=valid(location.hash.slice(1)); if(next!==current){ editingId=null; document.getElementById("detail").replaceChildren(); current=next; render(); } });
+document.getElementById("open-settings").onclick = () => go("settings");
+
+current = valid(location.hash.slice(1));
+render();
+
+(async () => {
+  const note = document.getElementById("note");
+  const hosted = !!(window.claude && window.claude.use);
+  let db = hosted ? await window.claude.use("db") : null;
+  if(!db){   // installed app, or a view without the shared store: keep everything on this device
+    db = localDb();
+    if(!db.ok()){ note.textContent="Nothing is being saved in this view. Your entries will clear when you close the page."; note.hidden=false; }
+    else if(hosted){ note.textContent="Saved on this device only."; note.hidden=false; }
+    try{ if(navigator.storage && navigator.storage.persist) navigator.storage.persist(); }catch(_){}
+  }
+  const lost = () => { col=null; pdoc=null; note.textContent="Lost the connection to your saved log. Reload the page to pick it up again."; note.hidden=false; };
+  col = db.collection("entries");
+  pdoc = db.doc("profile/me");
+  planDoc = db.doc("plans/"+dayKey());
+  db.collection("plans").limit(1000).onSnapshot(snap=>{
+    const today = dayKey(), all = {}, busy = saving || dirty;
+    snap.docs.forEach(d=>{ all[d.id] = d.data(); });
+    if(!busy) plan = normPlan(all[today]);   // while a save is in flight, keep the local copy
+    all[today] = plan;
+    plansByDate = all;
+    render();
+  }, lost);
+  col.orderBy("ts","desc").limit(500).onSnapshot(snap=>{ entries = snap.docs.map(d=>({id:d.id,...d.data()})); render(); }, lost);
+  pdoc.onSnapshot(snap=>{ if(snap.exists) profile = {age:null,ageSetOn:null,heightCm:null,...snap.data()}; profileReady = true; render(); }, lost);
+})();
+</script>
+<script>if('serviceWorker' in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));</script>
+</body>
+</html>
