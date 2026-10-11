@@ -61,6 +61,7 @@ button{font:inherit;color:inherit;cursor:pointer}
 .wd.on{background:var(--plate-diet);border-color:var(--plate-diet);color:var(--on-plate)}
 .wd.on b{color:var(--on-plate)}
 .wd.now{outline:2px solid var(--fg);outline-offset:1px}
+.wd{cursor:pointer;font-family:inherit}
 
 .tiles{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .tile{display:flex;flex-direction:column;align-items:flex-start;gap:14px;min-width:0;min-height:150px;text-align:left;border:1px solid var(--line);border-radius:22px;padding:18px;color:var(--fg);box-shadow:var(--shadow);
@@ -589,8 +590,11 @@ function renderHome(){
   for(let i=6;i>=0;i--){
     const d = new Date(); d.setDate(d.getDate()-i);
     const on = entries.some(e=>e.date===dayKey(d)) || !!(plansByDate[dayKey(d)]||{}).workout;
-    week.append(el("div",{className:"wd"+(i===0?" now":"")+(on?" on":"")},
-      el("span",{textContent:d.toLocaleDateString(undefined,{weekday:"narrow"})}),el("b",{textContent:d.getDate()})));
+    const key = dayKey(d), box = el("button",{type:"button",className:"wd"+(i===0?" now":"")+(on?" on":"")},
+      el("span",{textContent:d.toLocaleDateString(undefined,{weekday:"narrow"})}),el("b",{textContent:d.getDate()}));
+    box.setAttribute("aria-label","Open "+d.toLocaleDateString(undefined,{weekday:"long",day:"numeric",month:"long"}));
+    box.onclick = () => { if(i===0) go("plan"); else { selDate = key; go("day"); } };
+    week.append(box);
   }
   const setup = document.getElementById("setup");
   const need = profileReady && profile.age==null;
@@ -687,7 +691,7 @@ function renderKind(sec,keep){
         if(data.heightCm && data.heightCm!==profile.heightCm && !editing) await saveProfile({heightCm:data.heightCm});
         editingId = null; sec.replaceChildren();
         if(editing) await updateEntry(editing.id,data); else await addEntry(data);
-        returnTo==="plan" ? go("plan") : render();
+        returnTo ? go(returnTo) : render();
       }catch(e){ say(saveError(e)); }
     };
     sec.append(form);
@@ -711,9 +715,9 @@ function renderDetail(){
   const keep = {}; sec.querySelectorAll("input").forEach(i=>keep[i.id]=i.value);
   const focusId = document.activeElement && document.activeElement.id;
   sec.dataset.kind = current; sec.replaceChildren();
-  const back = el("button",{className:"pill back",type:"button",textContent:returnTo==="plan"?"← Today's plan":"← All options"}); back.onclick=()=>go(returnTo||"");
+  const back = el("button",{className:"pill back",type:"button",textContent:returnTo==="plan"?"← Today's plan":returnTo==="day"?"← Back to that day":"← All options"}); back.onclick=()=>go(returnTo||"");
   sec.append(back);
-  current==="settings" ? renderSettings(sec,keep) : current==="plan" ? renderPlan(sec,keep) : renderKind(sec,keep);
+  current==="settings" ? renderSettings(sec,keep) : current==="day" ? renderDay(sec) : current==="plan" ? renderPlan(sec,keep) : renderKind(sec,keep);
   if(focusId){ const f=document.getElementById(focusId); if(f) f.focus(); }
 }
 
@@ -723,9 +727,30 @@ function render(){
   document.getElementById("detail").hidden = !open;
   open ? renderDetail() : renderHome();
 }
-const valid = k => KINDS[k] || k==="settings" || k==="plan" ? k : null;
+let selDate = null;   // the past day open in the day view
+// A past day, opened from the week strip: what was planned and logged. Entries can still be edited or removed.
+function renderDay(sec){
+  const key = selDate || dayKey(), p = plansByDate[key] || {}, w = p.workout, ms = Array.isArray(p.muscles) ? p.muscles : [];
+  sec.append(el("div",{className:"head"},el("h2",{textContent:new Date(key+"T00:00").toLocaleDateString(undefined,{weekday:"short",day:"numeric",month:"short"})}),
+    el("p",{className:"sub",textContent:ms.length ? "Muscle groups: "+ms.join(", ")+"." : "No muscle groups were picked."})));
+  const wl = el("ul",{className:"rows"});
+  ((w && w.exercises) || []).forEach(ex=>{
+    const ds = (ex.sets||[]).filter(s=>s.done);
+    wl.append(el("li",{},el("span",{className:"what",textContent:ex.name}),el("span",{className:"nums",textContent:ds.length ? ds.map(setText).join(", ") : "No sets logged"})));
+  });
+  sec.append(el("div",{className:"day"},el("h3",{textContent:"Workout"+(w && w.finishedAt ? " · done" : "")}),
+    wl.children.length ? wl : el("p",{className:"empty",textContent:"No workout that day."})));
+  for(const kind in KINDS){
+    if(kind==="gym") continue;
+    const list = entries.filter(e=>e.kind===kind && e.date===key).sort((a,b)=>a.ts-b.ts);
+    const ul = el("ul",{className:"rows"}); list.forEach(e=>ul.append(row(e,()=>go(kind,e.id))));
+    sec.append(el("div",{className:"day"},el("h3",{textContent:KINDS[kind].label}),
+      list.length ? ul : el("p",{className:"empty",textContent:"Nothing logged."})));
+  }
+}
+const valid = k => KINDS[k] || k==="settings" || k==="plan" || (k==="day" && selDate) ? k : null;
 let returnTo = null;   // set when a screen was opened from Today's plan, so Back returns there
-function go(view,editId){ returnTo = current==="plan" && view && view!=="plan" ? "plan" : null; try{ location.hash = view; }catch(_){} editingId=editId||null; document.getElementById("detail").replaceChildren(); current = valid(view); render(); window.scrollTo(0,0); }
+function go(view,editId){ returnTo = (current==="plan" || current==="day") && view && view!==current ? current : null; try{ location.hash = view; }catch(_){} editingId=editId||null; document.getElementById("detail").replaceChildren(); current = valid(view); render(); window.scrollTo(0,0); }
 window.addEventListener("hashchange",()=>{ const next=valid(location.hash.slice(1)); if(next!==current){ editingId=null; document.getElementById("detail").replaceChildren(); current=next; render(); } });
 document.getElementById("open-settings").onclick = () => go("settings");
 
