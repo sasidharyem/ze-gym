@@ -135,6 +135,16 @@ form .pill{grid-column:1/-1}
 .sugg small{color:var(--muted);font-size:13px}
 .ownrow{display:flex;gap:8px}
 .ownrow input{flex:1}
+.wsvg{width:100%;height:auto;display:block;touch-action:manipulation;cursor:pointer}
+.wgrid{stroke:var(--line);stroke-width:1}
+.wax{fill:var(--muted);font-size:11px;font-family:var(--body)}
+.wline{fill:none;stroke:var(--plate-body);stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
+.wdot{fill:var(--plate-body);stroke:var(--surface);stroke-width:2}
+.wmed{stroke:var(--muted);stroke-width:1.5;stroke-dasharray:4 4}
+.wlegend{margin:0;display:flex;align-items:center;gap:8px;font-size:14px;color:var(--fg);font-variant-numeric:tabular-nums}
+.wkey{width:18px;border-top:2px dashed var(--muted)}
+.wtip{min-height:1.4em;font-variant-numeric:tabular-nums}
+.wchart .dayhead{flex-wrap:wrap}
 .empty,.note{color:var(--muted);margin:0}
 .note{font-size:14px}
 </style>
@@ -190,8 +200,8 @@ let plan = {muscles:[], workout:null};   // today's chosen muscle groups
 let planDoc = null, saving = false, dirty = false;
 let plansByDate = {};        // every saved day, for "last time" and personal bests
 let activeEx = null;         // exercise open in the workout
-let restEnd = 0, restSecs = 90;
-try{ restSecs = +localStorage.getItem("zg-rest") || 90; }catch(_){}
+let restEnd = 0, restSecs = 180;
+try{ restSecs = +localStorage.getItem("zg-rest2") || 180; }catch(_){}
 const SUGGEST = {
   Chest:["Bench press","Incline dumbbell press","Cable flys","Chest dips","Push-ups"],
   Back:["Lat pulldown","Seated cable row","Barbell row","Pull-ups","Deadlift"],
@@ -205,6 +215,8 @@ const SUGGEST = {
   Glutes:["Hip thrust","Glute bridge","Bulgarian split squat"],
   Calves:["Standing calf raise","Seated calf raise"]
 };
+const STEP_KG = 10;   // next set starts this much heavier; bodyweight (0 kg) stays 0
+const nextKg = k => k>0 ? k+STEP_KG : 0;
 const uid = () => Date.now().toString(36)+Math.random().toString(36).slice(2,6);
 const doneSets = ex => ex.sets.filter(s=>s.done);
 const setText = s => fmt(+s.kg||0)+" kg × "+(s.reps||0);
@@ -313,9 +325,9 @@ function renderGym(sec,keep){
   }
   if(restEnd){
     const box = el("div",{className:"rest"},el("b",{id:"rest-clock",textContent:"Rest"}));
-    [60,90,120].forEach(sv=>{
+    [60,90,120,180].forEach(sv=>{
       const c = el("button",{className:"chip",type:"button",id:"rest-"+sv,textContent:sv+" s"}); c.setAttribute("aria-pressed",restSecs===sv);
-      c.onclick = () => { restSecs = sv; try{ localStorage.setItem("zg-rest",sv); }catch(_){} restEnd = Date.now()+sv*1000; render(); };
+      c.onclick = () => { restSecs = sv; try{ localStorage.setItem("zg-rest2",sv); }catch(_){} restEnd = Date.now()+sv*1000; render(); };
       box.append(c);
     });
     const skip = el("button",{className:"pill",type:"button",id:"rest-skip",textContent:"Skip rest"}); skip.onclick = () => { restEnd = 0; render(); };
@@ -343,8 +355,8 @@ function renderGym(sec,keep){
           const k = kg.value.trim()==="" ? 0 : num(kg.value,0,2000), r = num(reps.value,1,2000);
           if(k==null || r==null || r%1){ say(cmsg,"Enter the reps for set "+(i+1)+" first. Leave weight empty for bodyweight."); reps.focus(); return; }
           s.kg = k; s.reps = r; s.done = true;
-          if(i===cur.sets.length-1) cur.sets.push({kg:k,reps:null,done:false});
-          else if(cur.sets[i+1].kg==null) cur.sets[i+1].kg = k;
+          if(i===cur.sets.length-1) cur.sets.push({kg:nextKg(k),reps:null,done:false});
+          else if(cur.sets[i+1].kg==null) cur.sets[i+1].kg = nextKg(k);
           restEnd = Date.now()+restSecs*1000;
         }
         savePlan(); render();
@@ -354,7 +366,7 @@ function renderGym(sec,keep){
       card.append(rowEl);
     });
     const addSet = el("button",{className:"pill",type:"button",id:"add-set",textContent:"Add set"});
-    addSet.onclick = () => { const l = cur.sets[cur.sets.length-1]; cur.sets.push({kg:l?l.kg:null,reps:null,done:false}); savePlan(); render(); };
+    addSet.onclick = () => { const l = cur.sets[cur.sets.length-1]; cur.sets.push({kg:l&&l.kg!=null?nextKg(+l.kg):null,reps:null,done:false}); savePlan(); render(); };
     const doneBtn = el("button",{className:"add",type:"button",id:"ex-done",textContent:"Exercise done"});
     doneBtn.onclick = () => {
       if(!doneSets(cur).length){ say(cmsg,"Tick at least one set first."); return; }
@@ -500,10 +512,82 @@ async function removeEntry(id){
 }
 const saveError = e => e && e.code==="quota_exceeded" ? "The log is full. Remove some old entries, then try again." : "That wasn't saved. Try again.";
 
+const median = a => { if(!a.length) return null; const v=[...a].sort((x,y)=>x-y), m=v.length>>1; return v.length%2 ? v[m] : (v[m-1]+v[m])/2; };
+// One weight per day: the last weigh-in of that day. Returns {date: kg}.
+function dailyWeights(){
+  const out = {};
+  entries.filter(e=>e.kind==="body" && +e.kg>0).sort((a,b)=>a.ts-b.ts).forEach(e=>{ out[e.date] = +e.kg; });
+  return out;
+}
+function weekStart(d=new Date()){ const x = new Date(d.getFullYear(),d.getMonth(),d.getDate()); x.setDate(x.getDate()-((x.getDay()+6)%7)); return x; }
+function weekMedian(){
+  const dw = dailyWeights(), s = dayKey(weekStart());
+  return median(Object.keys(dw).filter(k=>k>=s && k<=dayKey()).map(k=>dw[k]));
+}
+let chartRange = "week";
+// Points for the chosen range: daily weights for week (7 days) and month (30 days), monthly medians for the year.
+function chartPoints(range){
+  const dw = dailyWeights(), pts = [], today = new Date();
+  if(range==="year"){
+    for(let i=11;i>=0;i--){
+      const d = new Date(today.getFullYear(),today.getMonth()-i,1), pre = dayKey(d).slice(0,7);
+      const m = median(Object.keys(dw).filter(k=>k.slice(0,7)===pre).map(k=>dw[k]));
+      pts.push({label:d.toLocaleDateString(undefined,{month:"short"}), tip:d.toLocaleDateString(undefined,{month:"long",year:"numeric"})+": median", kg:m});
+    }
+  } else {
+    const n = range==="week" ? 7 : 30;
+    for(let i=n-1;i>=0;i--){
+      const d = new Date(today); d.setDate(d.getDate()-i); const k = dayKey(d);
+      pts.push({label:range==="week"?d.toLocaleDateString(undefined,{weekday:"short"}):String(d.getDate()), tip:d.toLocaleDateString(undefined,{weekday:"short",day:"numeric",month:"short"}), kg:dw[k]!=null?dw[k]:null});
+    }
+  }
+  return pts;
+}
+function weightChart(){
+  const wrap = el("div",{className:"card wchart"});
+  const tabs = el("div",{className:"chips"});
+  [["week","Week"],["month","Month"],["year","Year"]].forEach(([k,l])=>{
+    const b = el("button",{className:"chip",type:"button",id:"range-"+k,textContent:l}); b.setAttribute("aria-pressed",chartRange===k);
+    b.onclick = () => { chartRange = k; render(); };
+    tabs.append(b);
+  });
+  const pts = chartPoints(chartRange), have = pts.filter(p=>p.kg!=null);
+  const med = median(have.map(p=>p.kg));
+  const tip = el("p",{className:"hint wtip",textContent: have.length ? "Tap the chart to see a day's weight." : ""});
+  wrap.append(el("div",{className:"dayhead"},el("h3",{textContent:"Weight"}),tabs));
+  if(!have.length){ wrap.append(el("p",{className:"empty",textContent:"No weigh-ins in this period yet. Add your weight below to start the chart."})); return wrap; }
+  const W = 340, H = 190, L = 40, R = 12, T = 14, B = 26;
+  let lo = Math.min(...have.map(p=>p.kg)), hi = Math.max(...have.map(p=>p.kg));
+  lo = Math.floor(lo-1); hi = Math.ceil(hi+1);
+  const x = i => L + (pts.length===1 ? (W-L-R)/2 : i*(W-L-R)/(pts.length-1));
+  const y = v => T + (hi-v)*(H-T-B)/(hi-lo);
+  const NS = "http://www.w3.org/2000/svg", mk = (t,a) => { const e = document.createElementNS(NS,t); for(const k in a) e.setAttribute(k,a[k]); return e; };
+  const svg = mk("svg",{viewBox:`0 0 ${W} ${H}`,class:"wsvg",role:"img","aria-label":"Weight chart, median "+fmt(med)+" kg"});
+  [lo,(lo+hi)/2,hi].forEach(v=>{
+    svg.append(mk("line",{x1:L,x2:W-R,y1:y(v),y2:y(v),class:"wgrid"}));
+    const t = mk("text",{x:L-6,y:y(v)+4,class:"wax","text-anchor":"end"}); t.textContent = fmt(v); svg.append(t);
+  });
+  const step = Math.ceil(pts.length/7);
+  pts.forEach((p,i)=>{ if(i%step && i!==pts.length-1) return; const t = mk("text",{x:x(i),y:H-8,class:"wax","text-anchor":"middle"}); t.textContent = p.label; svg.append(t); });
+  svg.append(mk("line",{x1:L,x2:W-R,y1:y(med),y2:y(med),class:"wmed"}));
+  let d = ""; pts.forEach((p,i)=>{ if(p.kg==null) return; d += (d?"L":"M")+x(i).toFixed(1)+" "+y(p.kg).toFixed(1); });
+  svg.append(mk("path",{d,class:"wline"}));
+  const dots = [];
+  pts.forEach((p,i)=>{ if(p.kg==null) return; const c = mk("circle",{cx:x(i),cy:y(p.kg),r:4,class:"wdot"}); dots.push([i,c]); svg.append(c); });
+  const show = i => { const p = pts[i]; tip.textContent = p.tip+" · "+fmt(p.kg)+" kg"; dots.forEach(([j,c])=>c.setAttribute("r",j===i?6:4)); };
+  svg.addEventListener("pointerdown",ev=>{
+    const r = svg.getBoundingClientRect(), px = (ev.clientX-r.left)*W/r.width;
+    let best = null; pts.forEach((p,i)=>{ if(p.kg!=null && (best==null || Math.abs(x(i)-px)<Math.abs(x(best)-px))) best = i; });
+    if(best!=null) show(best);
+  });
+  const label = chartRange==="week" ? "Median, last 7 days" : chartRange==="month" ? "Median, last 30 days" : "Median, last 12 months";
+  wrap.append(svg, el("p",{className:"wlegend"},el("span",{className:"wkey"}),label+": "+fmt(med)+" kg"), tip);
+  return wrap;
+}
 function totals(kind){
   if(kind==="body"){
-    const w = latestWeight(), b = w && bmi(w.kg);
-    return [[w?fmt(w.kg):"–","kg, latest"],[b?fmt(b):"–","BMI"],[profile.heightCm?fmt(profile.heightCm):"–","cm tall"]];
+    const w = latestWeight(), b = w && bmi(w.kg), wm = weekMedian();
+    return [[w?fmt(w.kg):"–","kg, latest"],[wm!=null?fmt(wm):"–","kg, this week's median"],[b?fmt(b):"–","BMI"],[profile.heightCm?fmt(profile.heightCm):"–","cm tall"]];
   }
   const list = entries.filter(e=>e.kind===kind && e.date===dayKey());
   const sum = f => list.reduce((s,e)=>s+(+e[f]||0),0);
@@ -514,7 +598,7 @@ function totals(kind){
 function tileText(kind){
   if(kind==="body"){
     const w = latestWeight(); if(!w) return "Add your weight";
-    const b = bmi(w.kg); return "Latest: "+fmt(w.kg)+" kg"+(b?" · BMI "+fmt(b):"");
+    const wm = weekMedian(); return "Latest: "+fmt(w.kg)+" kg"+(wm!=null?" · week median "+fmt(wm):"");
   }
   if(kind==="gym" && plan.workout){
     const w = plan.workout, n = w.exercises.length;
@@ -633,6 +717,7 @@ function renderKind(sec,keep){
   // Gym is only the day's muscle groups: no exercise form, totals or log.
   if(kind==="gym"){ renderGym(sec,keep); return; }
   sec.append(el("div",{className:"stats"}, ...totals(kind).map(([v,l])=>el("div",{className:"stat"},el("b",{textContent:v}),el("span",{textContent:l})))));
+  if(kind==="body") sec.append(weightChart());
 
   if(kind==="diet"){
     const glass = el("button",{className:"pill back",type:"button",id:"add-glass",textContent:"+ 0.25 L water"});
@@ -721,6 +806,21 @@ function renderDetail(){
   if(focusId){ const f=document.getElementById(focusId); if(f) f.focus(); }
 }
 
+// Store updates redraw the screen. While a finger is down, or just after, wait: redrawing
+// then would replace the button being tapped, so the tap would only close the keyboard.
+let pressing = false, lastUp = 0, renderQueued = false;
+function scheduleRender(){
+  if(renderQueued) return; renderQueued = true;
+  const tryNow = () => {
+    const ae = document.activeElement;
+    if(pressing || Date.now()-lastUp < 350 || (ae && ae.tagName==="INPUT" && document.getElementById("detail").contains(ae))){ setTimeout(tryNow,150); return; }
+    renderQueued = false; render();
+  };
+  setTimeout(tryNow,0);
+}
+document.addEventListener("pointerdown",()=>{ pressing = true; },true);
+document.addEventListener("pointerup",()=>{ pressing = false; lastUp = Date.now(); },true);
+document.addEventListener("pointercancel",()=>{ pressing = false; lastUp = Date.now(); },true);
 function render(){
   const open = !!current;
   document.getElementById("home").hidden = open;
@@ -777,10 +877,10 @@ render();
     if(!busy) plan = normPlan(all[today]);   // while a save is in flight, keep the local copy
     all[today] = plan;
     plansByDate = all;
-    render();
+    scheduleRender();
   }, lost);
-  col.orderBy("ts","desc").limit(500).onSnapshot(snap=>{ entries = snap.docs.map(d=>({id:d.id,...d.data()})); render(); }, lost);
-  pdoc.onSnapshot(snap=>{ if(snap.exists) profile = {age:null,ageSetOn:null,heightCm:null,...snap.data()}; profileReady = true; render(); }, lost);
+  col.orderBy("ts","desc").limit(500).onSnapshot(snap=>{ entries = snap.docs.map(d=>({id:d.id,...d.data()})); scheduleRender(); }, lost);
+  pdoc.onSnapshot(snap=>{ if(snap.exists) profile = {age:null,ageSetOn:null,heightCm:null,...snap.data()}; profileReady = true; scheduleRender(); }, lost);
 })();
 </script>
 <script>if('serviceWorker' in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));</script>
