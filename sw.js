@@ -1,5 +1,5 @@
 /* Network first, so a new version shows up the next time the app opens online; the cache is only for offline use. */
-const C='zegym-v2';
+const C='zegym-v3';
 self.addEventListener('install',e=>{self.skipWaiting();e.waitUntil(caches.open(C).then(c=>c.addAll(['./','manifest.webmanifest','icon-192.png','icon-512.png'])).catch(()=>{}));});
 self.addEventListener('activate',e=>e.waitUntil(self.clients.claim()));
 self.addEventListener('fetch',e=>{

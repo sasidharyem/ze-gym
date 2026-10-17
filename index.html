@@ -151,6 +151,38 @@ form .pill{grid-column:1/-1}
 .popcard p{margin:0;font-size:17px}
 @media (prefers-reduced-motion:no-preference){.popcard{animation:popin .25s ease-out}}
 @keyframes popin{from{transform:scale(.92);opacity:.6}to{transform:none;opacity:1}}
+.stp{display:flex;flex-direction:column;gap:6px}
+.stl{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.stc{display:grid;grid-template-columns:64px 1fr 64px;gap:8px;align-items:stretch}
+.stb{border:1px solid var(--line);background:var(--surface2);color:var(--fg);border-radius:16px;font-size:30px;font-weight:600;min-height:64px;touch-action:manipulation}
+.stb:active{background:var(--line)}
+.stb.sm{min-height:36px;width:36px;font-size:20px;border-radius:10px;padding:0}
+.stv{display:flex;align-items:baseline;justify-content:center;gap:6px;border:1px solid var(--line);border-radius:16px;background:var(--surface2);padding:0 10px;min-width:0}
+.stv input{border:0;background:none;padding:0;text-align:right;font-family:var(--display);font-size:40px;font-weight:700;width:100%;min-width:0;color:var(--fg);font-variant-numeric:tabular-nums}
+.stv small{color:var(--muted);font-size:14px;flex:none}
+.stv input::-webkit-outer-spin-button,.stv input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.stv input{-moz-appearance:textfield;appearance:textfield}
+.setno{margin:4px 0 0;font-family:var(--display);font-size:24px;font-weight:700;text-transform:uppercase}
+.add.big{padding:18px;font-size:19px;background:var(--plate-diet)}
+.doneSets{padding:0 12px}
+.cnt{min-width:54px;text-align:center;font-variant-numeric:tabular-nums;font-size:14px}
+.eyebrow{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+.card.today h3{font-size:40px}
+.rchip{font-size:13px;border-radius:999px;padding:5px 12px;border:1px solid var(--line)}
+.rchip.ok{color:var(--ink-diet)}
+.rchip.wait{color:var(--ink-body)}
+.warn{margin:0;font-size:14px;color:var(--ink-body)}
+.pill:disabled{opacity:.5}
+.rs{position:fixed;inset:0;z-index:60;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:calc(24px + env(safe-area-inset-top,0px)) 16px calc(24px + env(safe-area-inset-bottom,0px));background:#000;color:#f2f3ef;text-align:center}
+.rs.over{background:#7d1d18}
+.rs-label{margin:0;font-family:var(--display);font-size:28px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#b9c0c7}
+.rs.over .rs-label{color:#ffd9d6}
+.rs-time{font-family:var(--display);font-weight:700;font-size:clamp(96px,32vw,180px);line-height:.9;font-variant-numeric:tabular-nums}
+.rs-next{margin:0;font-size:18px;max-width:28ch;color:#d5dade}
+.rs-row{display:flex;gap:12px}
+.rs-row button,.rs-hide{background:none;color:#f2f3ef;border:1px solid #4a525b;border-radius:999px;padding:12px 20px;font-size:16px}
+.rs-go{background:#f2f3ef;color:#000;border:0;border-radius:18px;padding:18px 28px;font-size:19px;font-weight:700;min-width:240px}
+.rs-hide{border:0;color:#9aa3ac}
 .empty,.note{color:var(--muted);margin:0}
 .note{font-size:14px}
 </style>
@@ -170,12 +202,13 @@ form .pill{grid-column:1/-1}
   </div>
   <section id="detail" hidden></section>
   <p class="note" id="note" hidden></p>
-  <div class="pop" id="rest-pop" hidden role="alertdialog" aria-labelledby="rest-pop-h">
-    <div class="popcard">
-      <h2 id="rest-pop-h">Rest over</h2>
-      <p id="rest-pop-text">Your next set is up.</p>
-      <button class="add" type="button" id="rest-pop-ok">Start next set</button>
-    </div>
+  <div class="rs" id="rest-screen" hidden role="dialog" aria-label="Rest timer">
+    <p class="rs-label" id="rs-label">Rest</p>
+    <div class="rs-time" id="rs-time" aria-live="off">3:00</div>
+    <p class="rs-next" id="rs-next"></p>
+    <div class="rs-row"><button type="button" id="rs-minus">−15 s</button><button type="button" id="rs-plus">+15 s</button></div>
+    <button type="button" class="rs-go" id="rs-go">Skip rest</button>
+    <button type="button" class="rs-hide" id="rs-hide">Hide timer</button>
   </div>
 </div>
 
@@ -308,47 +341,170 @@ async function notify(title,body,opts={}){
   }catch(_){}
 }
 function askNotify(){ try{ if("Notification" in window && Notification.permission==="default") Notification.requestPermission(); }catch(_){} }
-function startRest(secs){
-  restEnd = Date.now()+secs*1000; restFired = false;
-  clearTimeout(restTimer); restTimer = setTimeout(restDone, secs*1000+50);
-  const ex = plan.workout && plan.workout.exercises.find(e=>e.id===activeEx);
-  notify("Resting · "+Math.round(secs/60*10)/10+" min","Next set at "+fmtClock(restEnd)+(ex?" · "+ex.name:""),{silent:true,renotify:false});
+let restHidden = false, warned = false;
+function nextText(){
+  const w = plan.workout, ex = w && (w.exercises.find(e=>e.id===activeEx && !e.done) || w.exercises.find(e=>!e.done));
+  if(!ex) return "Your next set";
+  const p = ex.sets.find(s=>!s.done), n = doneSets(ex).length+1;
+  return "Set "+n+(ex.target?" of "+ex.target:"")+" · "+ex.name+(p && p.kg!=null ? " · "+fmt(+p.kg||0)+" kg × "+(p.reps||"?") : "");
 }
-function stopRest(){ restEnd = 0; restFired = true; clearTimeout(restTimer); notify("Rest skipped","",{silent:true}).then(async()=>{ try{ const r = await navigator.serviceWorker.getRegistration(); (await r.getNotifications({tag:"zg-rest"})).forEach(n=>n.close()); }catch(_){} }); }
+function showRest(){
+  const rs = document.getElementById("rest-screen");
+  if(!restEnd){ rs.hidden = true; return; }
+  rs.classList.toggle("over", restFired);
+  document.getElementById("rs-label").textContent = restFired ? "Rest over" : "Rest";
+  document.getElementById("rs-next").textContent = (restFired ? "Up now: " : "Next: ")+nextText();
+  document.getElementById("rs-go").textContent = restFired ? "Start next set" : "Skip rest";
+  document.getElementById("rs-minus").parentElement.hidden = restFired;
+  document.getElementById("rs-hide").hidden = restFired;
+  rs.hidden = restHidden && !restFired;
+  tickRest();
+}
+function saveRestEnd(){ try{ localStorage.setItem("zg-restEnd", restEnd && !restFired ? String(restEnd) : ""); }catch(_){} }
+function armRest(){ clearTimeout(restTimer); restTimer = setTimeout(restDone, Math.max(0,restEnd-Date.now())+50); saveRestEnd(); }
+function startRest(secs){
+  restEnd = Date.now()+secs*1000; restFired = false; restHidden = false; warned = false;
+  armRest(); showRest();
+  notify("Resting · "+Math.round(secs/60*10)/10+" min","Next set at "+fmtClock(restEnd)+" · "+nextText(),{silent:true,renotify:false});
+}
+function shiftRest(sec){ if(!restEnd || restFired) return; restEnd = Math.max(Date.now()+1000, restEnd+sec*1000); warned = false; armRest(); tickRest();
+  notify("Resting","Next set at "+fmtClock(restEnd)+" · "+nextText(),{silent:true,renotify:false}); }
+function closeRestNotes(){ try{ navigator.serviceWorker.getRegistration().then(r=>r&&r.getNotifications({tag:"zg-rest"})).then(ns=>(ns||[]).forEach(n=>n.close())).catch(()=>{}); }catch(_){} }
+function stopRest(){ restEnd = 0; restFired = true; clearTimeout(restTimer); saveRestEnd(); closeRestNotes(); showRest(); }
 function restDone(){
   if(restFired || !restEnd || Date.now() < restEnd-200) return;
-  restFired = true;
+  restFired = true; saveRestEnd();
   try{ if(navigator.vibrate) navigator.vibrate(BUZZ); }catch(_){}
-  const w = plan.workout, ex = w && (w.exercises.find(e=>e.id===activeEx) || w.exercises.find(e=>!e.done));
-  const next = ex ? "Set "+(ex.sets.filter(s=>s.done).length+1)+" of "+ex.name : "Your next set";
-  notify("Rest over. Time to lift!",next,{vibrate:BUZZ,renotify:true,requireInteraction:true});
-  const pop = document.getElementById("rest-pop");
-  document.getElementById("rest-pop-text").textContent = next+" is up.";
-  pop.hidden = false; document.getElementById("rest-pop-ok").focus();
+  notify("Rest over. Time to lift!",nextText(),{vibrate:BUZZ,renotify:true,requireInteraction:true});
+  showRest(); document.getElementById("rs-go").focus();
 }
 document.addEventListener("visibilitychange",()=>{ if(!document.hidden) restDone(); });
 function tickRest(){
   if(restEnd && !restFired && Date.now()>=restEnd) restDone();
-  const c = document.getElementById("rest-clock"); if(!c) return;
-  const left = Math.ceil((restEnd-Date.now())/1000);
-  c.textContent = left>0 ? "Rest "+Math.floor(left/60)+":"+String(left%60).padStart(2,"0") : "Rest over. Next set.";
+  const left = Math.max(0,Math.ceil((restEnd-Date.now())/1000)), txt = Math.floor(left/60)+":"+String(left%60).padStart(2,"0");
+  if(restEnd && !restFired && left<=10 && left>0 && !warned){ warned = true; try{ if(navigator.vibrate) navigator.vibrate(150); }catch(_){} }
+  const t = document.getElementById("rs-time"); if(t) t.textContent = restFired ? "GO" : txt;
+  const c = document.getElementById("rest-clock"); if(c) c.textContent = restFired ? "Rest over. Next set." : "Rest "+txt;
 }
 setInterval(tickRest,250);
 const statsRow = items => el("div",{className:"stats"},...items.map(([v,l])=>el("div",{className:"stat"},el("b",{textContent:v}),el("span",{textContent:l}))));
+// ---- Workout days (Push / Pull / Legs by default) ----
+const DEFAULT_DAYS = [
+  {id:"push", name:"Push", muscles:["Chest","Shoulders","Triceps"], exercises:[
+    {name:"Bench press",group:"Chest",sets:4},{name:"Incline dumbbell press",group:"Chest",sets:3},
+    {name:"Overhead press",group:"Shoulders",sets:3},{name:"Lateral raises",group:"Shoulders",sets:4},
+    {name:"Triceps pushdown",group:"Triceps",sets:3},{name:"Overhead triceps extension",group:"Triceps",sets:3}]},
+  {id:"pull", name:"Pull", muscles:["Back","Biceps","Forearms"], exercises:[
+    {name:"Lat pulldown",group:"Back",sets:4},{name:"Seated cable row",group:"Back",sets:3},
+    {name:"Barbell row",group:"Back",sets:3},{name:"Rear delt flys",group:"Shoulders",sets:3},
+    {name:"Barbell curl",group:"Biceps",sets:3},{name:"Hammer curl",group:"Biceps",sets:3}]},
+  {id:"legs", name:"Legs", muscles:["Quads","Hamstrings","Glutes","Calves","Abs"], exercises:[
+    {name:"Squat",group:"Quads",sets:4},{name:"Romanian deadlift",group:"Hamstrings",sets:3},
+    {name:"Leg press",group:"Quads",sets:3},{name:"Leg curl",group:"Hamstrings",sets:3},
+    {name:"Standing calf raise",group:"Calves",sets:4},{name:"Hanging leg raises",group:"Abs",sets:3}]}
+];
+let routines = {days: JSON.parse(JSON.stringify(DEFAULT_DAYS))};
+let routinesDoc = null, editDays = null;
+const RECOVER_DAYS = 2;   // about 48 hours before training the same muscle hard again
+
+const pastDates = () => Object.keys(plansByDate).filter(d=>d<dayKey()).sort().reverse();
+const trained = p => !!(p && p.workout && (p.workout.exercises||[]).some(e=>(e.sets||[]).some(s=>s.done)));
+const daysBetween = (a,b) => Math.round((new Date(b+"T00:00")-new Date(a+"T00:00"))/86400000);
+function lastTrained(m){
+  for(const d of pastDates()){ const p = plansByDate[d]; if(trained(p) && (p.muscles||[]).includes(m)) return daysBetween(d,dayKey()); }
+  return null;
+}
+function streak(){
+  let n = 0; const d = new Date();
+  for(;;){ d.setDate(d.getDate()-1); if(trained(plansByDate[dayKey(d)])) n++; else return n; }
+}
+function suggestedDay(){
+  const days = routines.days; if(!days.length) return null;
+  for(const d of pastDates()){
+    const w = plansByDate[d] && plansByDate[d].workout;
+    if(trained(plansByDate[d]) && w.routine){ const i = days.findIndex(x=>x.id===w.routine); return days[(i+1)%days.length]; }
+  }
+  return days[0];
+}
+function startDay(day){
+  plan = {...plan, muscles: MUSCLES.filter(m=>day.muscles.includes(m))};
+  plan.workout = {startedAt:Date.now(), finishedAt:null, routine:day.id, routineName:day.name, exercises:[]};
+  day.exercises.forEach(x=>plan.workout.exercises.push({id:uid(), name:x.name, group:x.group, target:x.sets, done:false, sets:[]}));
+  const first = plan.workout.exercises[0];
+  if(first){ first.sets.push(newSet(first)); activeEx = first.id; }
+  savePlan();
+}
+
+// ---- Sets ----
+// A new set: 10 kg heavier than the last set done today, or last session's first weight; reps from last session.
+function newSet(ex){
+  const h = history(ex.name), ds = doneSets(ex), prev = ds[ds.length-1], idx = ds.length;
+  const kg = prev ? nextKg(+prev.kg||0) : (h.last && h.last[0] ? +h.last[0].kg||0 : null);
+  const reps = (h.last && h.last[idx] && +h.last[idx].reps) || (prev && +prev.reps) || 10;
+  return {kg, reps, done:false};
+}
 function addExercise(name,group){
-  const h = history(name), first = h.last && h.last[0], id = uid();
-  plan.workout.exercises.push({id,name,group,done:false,sets:[{kg:first?+first.kg||0:null,reps:null,done:false}]});
+  const id = uid(), ex = {id,name,group,target:null,done:false,sets:[]};
+  ex.sets.push(newSet(ex));
+  plan.workout.exercises.push(ex);
   activeEx = id; savePlan();
 }
+// Big − / + control with an editable value in the middle (typing still works).
+function stepper(id,label,value,step,unit,onSet){
+  const inp = el("input",{id,...numOpts,value:value==null?"":String(value)}); inp.setAttribute("aria-label",label);
+  const set = v => { v = Math.max(0,Math.round(v*100)/100); inp.value = String(v); onSet(v); };
+  const minus = el("button",{type:"button",className:"stb",textContent:"−"}); minus.setAttribute("aria-label","Less "+label);
+  const plus = el("button",{type:"button",className:"stb",textContent:"+"}); plus.setAttribute("aria-label","More "+label);
+  minus.onclick = () => set((parseFloat(inp.value)||0)-step);
+  plus.onclick = () => set((parseFloat(inp.value)||0)+step);
+  inp.onchange = () => { const v = parseFloat(inp.value); onSet(isFinite(v)&&v>=0 ? v : null); };
+  return el("div",{className:"stp"},el("span",{className:"stl",textContent:label}),
+    el("div",{className:"stc"},minus,el("div",{className:"stv"},inp,el("small",{textContent:unit})),plus));
+}
+
+// ---- Keep the screen on during a workout, so the rest alert arrives on time ----
+let wakeLock = null;
+async function syncAwake(){
+  const want = !!(plan.workout && !plan.workout.finishedAt) && !document.hidden;
+  try{
+    if(want && !wakeLock && navigator.wakeLock){ wakeLock = await navigator.wakeLock.request("screen"); wakeLock.addEventListener("release",()=>{ wakeLock = null; }); }
+    else if(!want && wakeLock){ const l = wakeLock; wakeLock = null; await l.release(); }
+  }catch(_){ wakeLock = null; }
+}
+document.addEventListener("visibilitychange",syncAwake);
 
 function renderGym(sec,keep){
   const w = plan.workout;
   const say = (m,t) => { m.textContent = t; m.hidden = false; };
   if(!w){
-    const start = el("button",{className:"add",type:"button",id:"start-workout",textContent:"Start workout"});
+    const day = suggestedDay(), st = streak();
+    if(day){
+      const rec = el("div",{className:"chips"});
+      let tired = [];
+      day.muscles.forEach(m=>{
+        const d = lastTrained(m), ok = d==null || d>=RECOVER_DAYS;
+        if(!ok) tired.push(m);
+        rec.append(el("span",{className:"rchip "+(ok?"ok":"wait"),textContent:m+" · "+(d==null?"fresh":ok?"ready, "+d+(d===1?" day":" days"):"recovering")}));
+      });
+      const goBtn = el("button",{className:"add",type:"button",id:"start-day",textContent:"Start "+day.name+" day"});
+      goBtn.onclick = () => { startDay(day); sec.replaceChildren(); render(); window.scrollTo(0,0); };
+      const hero = el("div",{className:"card today"},el("small",{className:"eyebrow",textContent:"Today"}),el("h3",{textContent:day.name+" day"}),
+        el("p",{className:"hint",textContent:day.exercises.length+" exercises · "+day.exercises.reduce((a,x)=>a+(+x.sets||0),0)+" sets"}), rec);
+      if(tired.length) hero.append(el("p",{className:"warn",textContent:tired.join(", ")+(tired.length===1?" was":" were")+" trained in the last 48 hours. Pick another day below if they still feel sore."}));
+      if(st>=6) hero.append(el("p",{className:"warn",textContent:"You've trained "+st+" days in a row. A rest or light day helps muscles grow."}));
+      hero.append(goBtn);
+      sec.append(hero);
+      const others = el("div",{className:"btnrow"});
+      routines.days.filter(d=>d!==day).forEach(d=>{ const b = el("button",{className:"pill",type:"button",textContent:"Start "+d.name}); b.onclick = () => { startDay(d); sec.replaceChildren(); render(); window.scrollTo(0,0); }; others.append(b); });
+      const ed = el("button",{className:"pill",type:"button",id:"edit-days",textContent:"Edit workout days"}); ed.onclick = () => go("routines");
+      others.append(ed);
+      sec.append(el("div",{className:"group"},el("h3",{textContent:"Or another day"}),others));
+    }
+    const start = el("button",{className:"pill",type:"button",id:"start-workout",textContent:"Start custom workout"});
     start.disabled = !plan.muscles.length;
     start.onclick = () => { plan.workout = {startedAt:Date.now(),finishedAt:null,exercises:[]}; savePlan(); render(); };
-    sec.append(muscleChips(), el("p",{className:"note",textContent:plan.muscles.length ? "Next, start the workout and pick your exercises." : "Tap the groups you're training today, then start the workout."}), start);
+    sec.append(el("div",{className:"group"},el("h3",{textContent:"Or build your own"}),muscleChips(),
+      el("p",{className:"note",textContent:"Pick muscle groups, then start and choose exercises."}),start));
     return;
   }
   if(w.finishedAt){
@@ -357,69 +513,72 @@ function renderGym(sec,keep){
     w.exercises.forEach(ex=>ul.append(el("li",{},el("span",{className:"what",textContent:ex.name}),el("span",{className:"nums",textContent:doneSets(ex).map(setText).join(", ")}))));
     const re = el("button",{className:"pill back",type:"button",id:"reopen",textContent:"Reopen workout to edit"});
     re.onclick = () => { w.finishedAt = null; savePlan(); render(); };
-    sec.append(el("p",{className:"sub",textContent:"Workout done for today."+(plan.muscles.length?" "+plan.muscles.join(", ")+".":"")}),
+    sec.append(el("p",{className:"sub",textContent:(w.routineName?w.routineName+" day done.":"Workout done for today.")+(plan.muscles.length?" "+plan.muscles.join(", ")+".":"")}),
       statsRow([[st.done,"exercises"],[st.sets,"sets"],[fmt(st.vol),"kg lifted"],[mins,mins===1?"minute":"minutes"],[st.pbs,"personal bests"]]),
       el("div",{className:"day"},el("h3",{textContent:"What you did"}),ul), re);
     return;
   }
 
   const total = w.exercises.length, nDone = w.exercises.filter(e=>e.done).length;
-  const cur = w.exercises.find(e=>e.id===activeEx) || w.exercises.find(e=>!e.done) || null;
+  const cur = w.exercises.find(e=>e.id===activeEx && !e.done) || w.exercises.find(e=>!e.done) || null;
+  if(cur) activeEx = cur.id;
   if(total){
     const fill = el("i"); fill.style.width = (nDone/total*100)+"%";
-    sec.append(el("div",{className:"prog"},el("span",{textContent:cur ? "Exercise "+(w.exercises.indexOf(cur)+1)+" of "+total+" · "+nDone+" done" : "All "+total+" exercises done"}),el("div",{className:"bar"},fill)));
+    sec.append(el("div",{className:"prog"},el("span",{textContent:(w.routineName?w.routineName+" day · ":"")+(cur ? "Exercise "+(w.exercises.indexOf(cur)+1)+" of "+total+" · "+nDone+" done" : "All "+total+" exercises done")}),el("div",{className:"bar"},fill)));
   }
   if(restEnd){
-    const box = el("div",{className:"rest"},el("b",{id:"rest-clock",textContent:"Rest"}));
-    [60,90,120,180].forEach(sv=>{
-      const c = el("button",{className:"chip",type:"button",id:"rest-"+sv,textContent:sv+" s"}); c.setAttribute("aria-pressed",restSecs===sv);
-      c.onclick = () => { restSecs = sv; try{ localStorage.setItem("zg-rest2",sv); }catch(_){} startRest(sv); render(); };
-      box.append(c);
-    });
+    const show = el("button",{className:"pill",type:"button",id:"rest-show",textContent:"Show timer"}); show.onclick = () => { restHidden = false; showRest(); };
     const skip = el("button",{className:"pill",type:"button",id:"rest-skip",textContent:"Skip rest"}); skip.onclick = () => { stopRest(); render(); };
-    box.append(skip); sec.append(box);
+    sec.append(el("div",{className:"rest"},el("b",{id:"rest-clock",textContent:"Rest"}),show,skip));
   }
 
   if(cur){
+    if(!cur.sets.some(s=>!s.done)) cur.sets.push(newSet(cur));
     const h = history(cur.name), card = el("div",{className:"card"}), cmsg = el("p",{className:"msg",hidden:true});
+    const ds = doneSets(cur), pending = cur.sets.find(s=>!s.done), n = ds.length+1;
     card.append(el("div",{className:"dayhead"},el("h3",{textContent:cur.name}),el("span",{className:"tag",textContent:cur.group||""})),
-      el("p",{className:"hint",textContent:h.last ? "Last time: "+h.last.map(setText).join(", ") : "First time logging this exercise."}),
-      el("div",{className:"setrow headrow"},el("span",{textContent:"Set"}),el("span",{textContent:"Weight (kg)"}),el("span",{textContent:"Reps"}),el("span",{textContent:"Done"})));
-    cur.sets.forEach((s,i)=>{
-      const mk = (f,label) => {
-        const id = "s-"+cur.id+"-"+i+"-"+f, inp = el("input",{id,...numOpts}); inp.setAttribute("aria-label","Set "+(i+1)+" "+label);
-        const v = keep[id]; inp.value = v!==undefined && v!=="" ? v : (s[f]==null ? "" : s[f]);
-        inp.onchange = () => { s[f] = num(inp.value,0,2000); savePlan(); };
-        return inp;
-      };
-      const kg = mk("kg","weight in kg"), reps = mk("reps","reps");
-      const tick = el("button",{className:"tick",type:"button",id:"t-"+cur.id+"-"+i,textContent:s.done?"✓":""});
-      tick.setAttribute("aria-pressed",!!s.done); tick.setAttribute("aria-label","Set "+(i+1)+" done");
-      tick.onclick = () => {
-        if(s.done) s.done = false;
-        else{
-          const k = kg.value.trim()==="" ? 0 : num(kg.value,0,2000), r = num(reps.value,1,2000);
-          if(k==null || r==null || r%1){ say(cmsg,"Enter the reps for set "+(i+1)+" first. Leave weight empty for bodyweight."); reps.focus(); return; }
-          s.kg = k; s.reps = r; s.done = true;
-          if(i===cur.sets.length-1) cur.sets.push({kg:nextKg(k),reps:null,done:false});
-          else if(cur.sets[i+1].kg==null) cur.sets[i+1].kg = nextKg(k);
-          askNotify(); startRest(restSecs);
-        }
-        savePlan(); render();
-      };
-      const rowEl = el("div",{className:"setrow"+(s.done?" done":"")},el("span",{className:"sn",textContent:i+1}),kg,reps,tick);
-      if(s.done && h.best>0 && +s.kg>h.best) rowEl.append(el("span",{className:"pb",textContent:"Personal best. Your previous top weight was "+fmt(h.best)+" kg."}));
-      card.append(rowEl);
-    });
-    const addSet = el("button",{className:"pill",type:"button",id:"add-set",textContent:"Add set"});
-    addSet.onclick = () => { const l = cur.sets[cur.sets.length-1]; cur.sets.push({kg:l&&l.kg!=null?nextKg(+l.kg):null,reps:null,done:false}); savePlan(); render(); };
-    const doneBtn = el("button",{className:"add",type:"button",id:"ex-done",textContent:"Exercise done"});
-    doneBtn.onclick = () => {
-      if(!doneSets(cur).length){ say(cmsg,"Tick at least one set first."); return; }
-      cur.sets = doneSets(cur); cur.done = true; activeEx = null; stopRest();
+      el("p",{className:"hint",textContent:h.last ? "Last time: "+h.last.map(setText).join(", ") : "First time logging this exercise."}));
+    if(ds.length){
+      const ul = el("ul",{className:"rows doneSets"});
+      ds.forEach((s,i)=>{
+        const undo = el("button",{type:"button",textContent:"Undo"}); undo.setAttribute("aria-label","Undo set "+(i+1));
+        undo.onclick = () => { cur.sets = cur.sets.filter(x=>x!==s && x.done); cur.sets.push({...s,done:false}); savePlan(); sec.replaceChildren(); render(); };
+        const li = el("li",{},el("span",{className:"what",textContent:"Set "+(i+1)}),el("span",{className:"nums",textContent:setText(s)+" ✓"}),undo);
+        if(h.best>0 && +s.kg>h.best) li.append(el("span",{className:"pb",textContent:"Personal best. Previous top: "+fmt(h.best)+" kg."}));
+        ul.append(li);
+      });
+      card.append(ul);
+    }
+    card.append(el("p",{className:"setno",textContent:"Set "+n+(cur.target?" of "+Math.max(cur.target,n):"")}),
+      stepper("st-kg-"+cur.id,"Weight",pending.kg==null?0:pending.kg,2.5,"kg",v=>{ pending.kg = v; savePlan(); }),
+      stepper("st-reps-"+cur.id,"Reps",pending.reps,1,"reps",v=>{ pending.reps = v==null?null:Math.round(v); savePlan(); }));
+    const doneSet = el("button",{className:"add big",type:"button",id:"set-done",textContent:"✓ Done set "+n});
+    doneSet.onclick = () => {
+      const kgIn = document.getElementById("st-kg-"+cur.id), rIn = document.getElementById("st-reps-"+cur.id);
+      const k = kgIn.value.trim()==="" ? 0 : num(kgIn.value,0,2000), r = num(rIn.value,1,2000);
+      if(k==null || r==null || r%1){ say(cmsg,"Set the reps first (at least 1). Leave weight at 0 for bodyweight."); return; }
+      pending.kg = k; pending.reps = r; pending.done = true;
+      const reached = cur.target && doneSets(cur).length>=cur.target;
+      let next = cur;
+      if(reached){
+        cur.done = true;
+        next = w.exercises.find(e=>!e.done) || null;
+        activeEx = next ? next.id : null;
+        if(next && !next.sets.some(s=>!s.done)) next.sets.push(newSet(next));
+      } else cur.sets.push(newSet(cur));
+      if(next){ askNotify(); startRest(restSecs); } else stopRest();
       savePlan(); sec.replaceChildren(); render(); window.scrollTo(0,0);
     };
-    card.append(el("div",{className:"btnrow"},addSet), doneBtn, cmsg);
+    const addSet = el("button",{className:"pill",type:"button",id:"add-set",textContent:cur.target?"Add a set (now "+(cur.target+1)+")":"Plan another set"});
+    addSet.onclick = () => { cur.target = (cur.target||doneSets(cur).length+1)+1; savePlan(); sec.replaceChildren(); render(); };
+    const fin = el("button",{className:"pill",type:"button",id:"ex-done",textContent:"Finish exercise"});
+    fin.onclick = () => {
+      if(!doneSets(cur).length){ say(cmsg,"Do at least one set first, or remove this exercise from the list below."); return; }
+      cur.sets = doneSets(cur); cur.done = true; stopRest();
+      const nx = w.exercises.find(e=>!e.done); activeEx = nx ? nx.id : null;
+      savePlan(); sec.replaceChildren(); render(); window.scrollTo(0,0);
+    };
+    card.append(doneSet, el("div",{className:"btnrow"},addSet,fin), cmsg);
     sec.append(card);
   } else sec.append(el("p",{className:"note",textContent:total ? "Every exercise is done. Add another below, or finish the workout." : "Pick your first exercise below."}));
 
@@ -428,10 +587,11 @@ function renderGym(sec,keep){
     w.exercises.forEach(ex=>{
       const n = doneSets(ex).length;
       const op = el("button",{type:"button",textContent:"Open"}); op.setAttribute("aria-label","Open "+ex.name);
-      op.onclick = () => { activeEx = ex.id; sec.replaceChildren(); render(); window.scrollTo(0,0); };
+      op.onclick = () => { activeEx = ex.id; ex.done = false; savePlan(); sec.replaceChildren(); render(); window.scrollTo(0,0); };
       const rm = el("button",{type:"button",textContent:"Remove"}); rm.setAttribute("aria-label","Remove "+ex.name);
       rm.onclick = () => { w.exercises = w.exercises.filter(x=>x!==ex); if(activeEx===ex.id) activeEx = null; savePlan(); sec.replaceChildren(); render(); };
-      ul.append(el("li",{},el("span",{className:"what",textContent:ex.name}),el("span",{className:"nums",textContent:(ex.done?"Done · ":ex===cur?"Now · ":"")+n+(n===1?" set":" sets")}),ex===cur?null:op,rm));
+      const status = (ex.done?"Done · ":ex===cur?"Now · ":"")+n+(ex.target?" of "+ex.target:"")+(n===1&&!ex.target?" set":" sets");
+      ul.append(el("li",{},el("span",{className:"what",textContent:ex.name}),el("span",{className:"nums",textContent:status}),ex===cur?null:op,rm));
     });
     sec.append(el("div",{className:"day"},el("h3",{textContent:"Today's exercises"}),ul));
   }
@@ -458,14 +618,64 @@ function renderGym(sec,keep){
   const fmsg = el("p",{className:"msg",hidden:true});
   const fin = el("button",{className:"add",type:"button",id:"finish",textContent:"Finish workout"});
   fin.onclick = () => {
-    if(!w.exercises.some(e=>doneSets(e).length)){ say(fmsg,"Tick at least one set before finishing."); return; }
+    if(!w.exercises.some(e=>doneSets(e).length)){ say(fmsg,"Do at least one set before finishing."); return; }
     w.exercises.forEach(e=>{ e.sets = doneSets(e); e.done = true; });
     w.exercises = w.exercises.filter(e=>e.sets.length);
     w.finishedAt = Date.now(); stopRest(); activeEx = null;
-    savePlan(); sec.replaceChildren(); render(); window.scrollTo(0,0);
+    savePlan(); syncAwake(); sec.replaceChildren(); render(); window.scrollTo(0,0);
   };
   sec.append(fin,fmsg);
   tickRest();
+}
+
+// ---- Edit workout days ----
+function renderRoutines(sec){
+  if(!editDays) editDays = JSON.parse(JSON.stringify(routines.days));
+  sec.append(el("div",{className:"head"},el("h2",{textContent:"Workout days"}),
+    el("p",{className:"sub",textContent:"Ze Gym suggests these in order, starting after the last one you did."})));
+  const rerender = () => { sec.replaceChildren(); render(); };
+  editDays.forEach((d,di)=>{
+    const card = el("div",{className:"card"});
+    const name = el("input",{id:"rd-name-"+d.id,type:"text",maxLength:24,value:d.name}); name.setAttribute("aria-label","Day name");
+    name.onchange = () => { d.name = name.value.trim() || d.name; };
+    const del = el("button",{className:"pill",type:"button",textContent:"Delete day"}); del.onclick = () => { editDays.splice(di,1); rerender(); };
+    card.append(el("div",{className:"ownrow"},name,del));
+    const chips = el("div",{className:"chips"});
+    MUSCLES.forEach(m=>{ const c = el("button",{className:"chip",type:"button",textContent:m}); c.setAttribute("aria-pressed",d.muscles.includes(m));
+      c.onclick = () => { d.muscles = d.muscles.includes(m) ? d.muscles.filter(x=>x!==m) : MUSCLES.filter(x=>x===m||d.muscles.includes(x)); rerender(); }; chips.append(c); });
+    card.append(el("small",{className:"eyebrow",textContent:"Muscle groups"}),chips);
+    const ul = el("ul",{className:"rows"});
+    d.exercises.forEach((x,xi)=>{
+      const cnt = el("b",{className:"cnt",textContent:x.sets+" sets"});
+      const mk = (t,dv) => { const b = el("button",{type:"button",className:"stb sm",textContent:t}); b.setAttribute("aria-label",(dv<0?"Fewer":"More")+" sets for "+x.name);
+        b.onclick = () => { x.sets = Math.min(10,Math.max(1,x.sets+dv)); cnt.textContent = x.sets+" sets"; }; return b; };
+      const rm = el("button",{type:"button",textContent:"Remove"}); rm.onclick = () => { d.exercises.splice(xi,1); rerender(); };
+      ul.append(el("li",{},el("span",{className:"what",textContent:x.name}),mk("−",-1),cnt,mk("+",1),rm));
+    });
+    card.append(ul);
+    const have = new Set(d.exercises.map(x=>x.name.toLowerCase())), add = el("div",{className:"chips"});
+    d.muscles.forEach(m=>SUGGEST[m].filter(n=>!have.has(n.toLowerCase())).forEach(n=>{
+      const c = el("button",{className:"chip",type:"button",textContent:"+ "+n}); c.onclick = () => { d.exercises.push({name:n,group:m,sets:3}); rerender(); }; add.append(c); }));
+    const own = el("input",{id:"rd-own-"+d.id,type:"text",maxLength:60,placeholder:"Or type an exercise"}); own.setAttribute("aria-label","Your own exercise");
+    const ob = el("button",{className:"pill",type:"button",textContent:"Add"}); ob.onclick = () => { const n = own.value.trim(); if(n){ d.exercises.push({name:n,group:d.muscles[0]||"Other",sets:3}); rerender(); } };
+    if(add.children.length) card.append(el("small",{className:"eyebrow",textContent:"Add exercises"}),add);
+    card.append(el("div",{className:"ownrow"},own,ob));
+    sec.append(card);
+  });
+  const addDay = el("button",{className:"pill",type:"button",textContent:"Add a day"});
+  addDay.onclick = () => { editDays.push({id:uid(),name:"Day "+(editDays.length+1),muscles:[],exercises:[]}); rerender(); };
+  const reset = el("button",{className:"pill",type:"button",textContent:"Reset to Push / Pull / Legs"});
+  reset.onclick = () => { editDays = JSON.parse(JSON.stringify(DEFAULT_DAYS)); rerender(); };
+  const msg = el("p",{className:"msg",hidden:true});
+  const save = el("button",{className:"add",type:"button",id:"save-days",textContent:"Save workout days"});
+  save.onclick = async () => {
+    sec.querySelectorAll("input[id^='rd-name-']").forEach(i=>{ const d = editDays.find(x=>"rd-name-"+x.id===i.id); if(d && i.value.trim()) d.name = i.value.trim(); });
+    if(!editDays.length){ msg.textContent = "Keep at least one day."; msg.hidden = false; return; }
+    routines = {days: JSON.parse(JSON.stringify(editDays))};
+    try{ if(routinesDoc) await routinesDoc.set(routines); editDays = null; go("gym"); }
+    catch(e){ msg.textContent = saveError(e); msg.hidden = false; }
+  };
+  sec.append(el("div",{className:"btnrow"},addDay,reset), save, msg);
 }
 
 function toggleMuscle(m){
@@ -652,6 +862,7 @@ function tileText(kind){
     if(n) return w.exercises.filter(e=>e.done).length+" of "+n+" exercises done";
     return "Workout started";
   }
+  if(kind==="gym"){ const d = suggestedDay(); if(d) return "Today: "+d.name+" day"; }
   if(kind==="gym") return plan.muscles.length ? plan.muscles.join(" · ") : "Pick today's muscle groups";
   if(!entries.some(e=>e.kind===kind && e.date===dayKey())) return "Nothing logged today";
   return totals(kind).slice(0,2).map(x=>x[0]+" "+x[1].replace(" today","")).join(" · ");
@@ -846,9 +1057,9 @@ function renderDetail(){
   const keep = {}; sec.querySelectorAll("input").forEach(i=>keep[i.id]=i.value);
   const focusId = document.activeElement && document.activeElement.id;
   sec.dataset.kind = current; sec.replaceChildren();
-  const back = el("button",{className:"pill back",type:"button",textContent:returnTo==="plan"?"← Today's plan":returnTo==="day"?"← Back to that day":"← All options"}); back.onclick=()=>go(returnTo||"");
+  const back = el("button",{className:"pill back",type:"button",textContent:returnTo==="plan"?"← Today's plan":returnTo==="day"?"← Back to that day":returnTo==="gym"?"← Gym":"← All options"}); back.onclick=()=>go(returnTo||"");
   sec.append(back);
-  current==="settings" ? renderSettings(sec,keep) : current==="day" ? renderDay(sec) : current==="plan" ? renderPlan(sec,keep) : renderKind(sec,keep);
+  current==="settings" ? renderSettings(sec,keep) : current==="day" ? renderDay(sec) : current==="routines" ? renderRoutines(sec) : current==="plan" ? renderPlan(sec,keep) : renderKind(sec,keep);
   if(focusId){ const f=document.getElementById(focusId); if(f) f.focus(); }
 }
 
@@ -872,6 +1083,7 @@ function render(){
   document.getElementById("home").hidden = open;
   document.getElementById("detail").hidden = !open;
   open ? renderDetail() : renderHome();
+  syncAwake();
 }
 let selDate = null;   // the past day open in the day view
 // A past day, opened from the week strip: what was planned and logged. Entries can still be edited or removed.
@@ -894,14 +1106,15 @@ function renderDay(sec){
       list.length ? ul : el("p",{className:"empty",textContent:"Nothing logged."})));
   }
 }
-const valid = k => KINDS[k] || k==="settings" || k==="plan" || (k==="day" && selDate) ? k : null;
+const valid = k => KINDS[k] || k==="settings" || k==="plan" || k==="routines" || (k==="day" && selDate) ? k : null;
 let returnTo = null;   // set when a screen was opened from Today's plan, so Back returns there
-function go(view,editId){ returnTo = (current==="plan" || current==="day") && view && view!==current ? current : null; try{ location.hash = view; }catch(_){} editingId=editId||null; document.getElementById("detail").replaceChildren(); current = valid(view); render(); window.scrollTo(0,0); }
+function go(view,editId){ returnTo = (current==="plan" || current==="day" || current==="gym") && view && view!==current ? current : null; try{ location.hash = view; }catch(_){} editingId=editId||null; document.getElementById("detail").replaceChildren(); current = valid(view); render(); window.scrollTo(0,0); }
 window.addEventListener("hashchange",()=>{ const next=valid(location.hash.slice(1)); if(next!==current){ editingId=null; document.getElementById("detail").replaceChildren(); current=next; render(); } });
-document.getElementById("rest-pop-ok").onclick = () => {
-  document.getElementById("rest-pop").hidden = true; restEnd = 0; render();
-  try{ navigator.serviceWorker.getRegistration().then(g=>g&&g.getNotifications({tag:"zg-rest"})).then(ns=>(ns||[]).forEach(n=>n.close())); }catch(_){}
-};
+document.getElementById("rs-go").onclick = () => { stopRest(); render(); };
+document.getElementById("rs-hide").onclick = () => { restHidden = true; showRest(); render(); };
+document.getElementById("rs-minus").onclick = () => shiftRest(-15);
+document.getElementById("rs-plus").onclick = () => shiftRest(15);
+try{ const t = +localStorage.getItem("zg-restEnd"); if(t > Date.now()){ restEnd = t; restFired = false; armRest(); setTimeout(showRest,0); } }catch(_){}
 document.getElementById("open-settings").onclick = () => go("settings");
 
 current = valid(location.hash.slice(1));
@@ -921,12 +1134,16 @@ render();
   col = db.collection("entries");
   pdoc = db.doc("profile/me");
   planDoc = db.doc("plans/"+dayKey());
+  routinesDoc = db.doc("routines/me");
+  routinesDoc.onSnapshot(s=>{ const d = s.exists && s.data(); if(d && Array.isArray(d.days) && d.days.length) routines = {days: JSON.parse(JSON.stringify(d.days))}; scheduleRender(); }, lost);
+  let booted = false;
   db.collection("plans").limit(1000).onSnapshot(snap=>{
     const today = dayKey(), all = {}, busy = saving || dirty;
     snap.docs.forEach(d=>{ all[d.id] = d.data(); });
     if(!busy) plan = normPlan(all[today]);   // while a save is in flight, keep the local copy
     all[today] = plan;
     plansByDate = all;
+    if(!booted){ booted = true; if(!location.hash && plan.workout && !plan.workout.finishedAt){ current = "gym"; try{ location.hash = "gym"; }catch(_){} } }
     scheduleRender();
   }, lost);
   col.orderBy("ts","desc").limit(500).onSnapshot(snap=>{ entries = snap.docs.map(d=>({id:d.id,...d.data()})); scheduleRender(); }, lost);
