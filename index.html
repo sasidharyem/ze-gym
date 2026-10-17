@@ -145,6 +145,12 @@ form .pill{grid-column:1/-1}
 .wkey{width:18px;border-top:2px dashed var(--muted)}
 .wtip{min-height:1.4em;font-variant-numeric:tabular-nums}
 .wchart .dayhead{flex-wrap:wrap}
+.pop{position:fixed;inset:0;z-index:50;display:grid;place-items:center;padding:16px;background:rgba(10,12,15,.6)}
+.popcard{width:100%;max-width:360px;display:flex;flex-direction:column;gap:12px;background:var(--surface);color:var(--fg);border:1px solid var(--line);border-radius:22px;padding:22px;box-shadow:var(--shadow);text-align:center}
+.popcard h2{font-size:40px;text-transform:uppercase;color:var(--plate-gym)}
+.popcard p{margin:0;font-size:17px}
+@media (prefers-reduced-motion:no-preference){.popcard{animation:popin .25s ease-out}}
+@keyframes popin{from{transform:scale(.92);opacity:.6}to{transform:none;opacity:1}}
 .empty,.note{color:var(--muted);margin:0}
 .note{font-size:14px}
 </style>
@@ -164,6 +170,13 @@ form .pill{grid-column:1/-1}
   </div>
   <section id="detail" hidden></section>
   <p class="note" id="note" hidden></p>
+  <div class="pop" id="rest-pop" hidden role="alertdialog" aria-labelledby="rest-pop-h">
+    <div class="popcard">
+      <h2 id="rest-pop-h">Rest over</h2>
+      <p id="rest-pop-text">Your next set is up.</p>
+      <button class="add" type="button" id="rest-pop-ok">Start next set</button>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -282,7 +295,40 @@ function workoutStats(w){
   });
   return {sets,vol,done,pbs};
 }
+// Rest alerts: a popup in the app, a vibration, and a phone notification.
+// The notification needs the installed app; inside Claude only the popup shows.
+let restFired = true, restTimer = null;
+const BUZZ = [500,200,500,200,800];
+const fmtClock = t => new Date(t).toLocaleTimeString(undefined,{hour:"numeric",minute:"2-digit"});
+async function notify(title,body,opts={}){
+  try{
+    if(!("Notification" in window) || Notification.permission!=="granted" || !navigator.serviceWorker) return;
+    const reg = await navigator.serviceWorker.getRegistration(); if(!reg) return;
+    await reg.showNotification(title,{body,tag:"zg-rest",icon:"icon-192.png",badge:"icon-192.png",...opts});
+  }catch(_){}
+}
+function askNotify(){ try{ if("Notification" in window && Notification.permission==="default") Notification.requestPermission(); }catch(_){} }
+function startRest(secs){
+  restEnd = Date.now()+secs*1000; restFired = false;
+  clearTimeout(restTimer); restTimer = setTimeout(restDone, secs*1000+50);
+  const ex = plan.workout && plan.workout.exercises.find(e=>e.id===activeEx);
+  notify("Resting · "+Math.round(secs/60*10)/10+" min","Next set at "+fmtClock(restEnd)+(ex?" · "+ex.name:""),{silent:true,renotify:false});
+}
+function stopRest(){ restEnd = 0; restFired = true; clearTimeout(restTimer); notify("Rest skipped","",{silent:true}).then(async()=>{ try{ const r = await navigator.serviceWorker.getRegistration(); (await r.getNotifications({tag:"zg-rest"})).forEach(n=>n.close()); }catch(_){} }); }
+function restDone(){
+  if(restFired || !restEnd || Date.now() < restEnd-200) return;
+  restFired = true;
+  try{ if(navigator.vibrate) navigator.vibrate(BUZZ); }catch(_){}
+  const w = plan.workout, ex = w && (w.exercises.find(e=>e.id===activeEx) || w.exercises.find(e=>!e.done));
+  const next = ex ? "Set "+(ex.sets.filter(s=>s.done).length+1)+" of "+ex.name : "Your next set";
+  notify("Rest over. Time to lift!",next,{vibrate:BUZZ,renotify:true,requireInteraction:true});
+  const pop = document.getElementById("rest-pop");
+  document.getElementById("rest-pop-text").textContent = next+" is up.";
+  pop.hidden = false; document.getElementById("rest-pop-ok").focus();
+}
+document.addEventListener("visibilitychange",()=>{ if(!document.hidden) restDone(); });
 function tickRest(){
+  if(restEnd && !restFired && Date.now()>=restEnd) restDone();
   const c = document.getElementById("rest-clock"); if(!c) return;
   const left = Math.ceil((restEnd-Date.now())/1000);
   c.textContent = left>0 ? "Rest "+Math.floor(left/60)+":"+String(left%60).padStart(2,"0") : "Rest over. Next set.";
@@ -327,10 +373,10 @@ function renderGym(sec,keep){
     const box = el("div",{className:"rest"},el("b",{id:"rest-clock",textContent:"Rest"}));
     [60,90,120,180].forEach(sv=>{
       const c = el("button",{className:"chip",type:"button",id:"rest-"+sv,textContent:sv+" s"}); c.setAttribute("aria-pressed",restSecs===sv);
-      c.onclick = () => { restSecs = sv; try{ localStorage.setItem("zg-rest2",sv); }catch(_){} restEnd = Date.now()+sv*1000; render(); };
+      c.onclick = () => { restSecs = sv; try{ localStorage.setItem("zg-rest2",sv); }catch(_){} startRest(sv); render(); };
       box.append(c);
     });
-    const skip = el("button",{className:"pill",type:"button",id:"rest-skip",textContent:"Skip rest"}); skip.onclick = () => { restEnd = 0; render(); };
+    const skip = el("button",{className:"pill",type:"button",id:"rest-skip",textContent:"Skip rest"}); skip.onclick = () => { stopRest(); render(); };
     box.append(skip); sec.append(box);
   }
 
@@ -357,7 +403,7 @@ function renderGym(sec,keep){
           s.kg = k; s.reps = r; s.done = true;
           if(i===cur.sets.length-1) cur.sets.push({kg:nextKg(k),reps:null,done:false});
           else if(cur.sets[i+1].kg==null) cur.sets[i+1].kg = nextKg(k);
-          restEnd = Date.now()+restSecs*1000;
+          askNotify(); startRest(restSecs);
         }
         savePlan(); render();
       };
@@ -370,7 +416,7 @@ function renderGym(sec,keep){
     const doneBtn = el("button",{className:"add",type:"button",id:"ex-done",textContent:"Exercise done"});
     doneBtn.onclick = () => {
       if(!doneSets(cur).length){ say(cmsg,"Tick at least one set first."); return; }
-      cur.sets = doneSets(cur); cur.done = true; activeEx = null; restEnd = 0;
+      cur.sets = doneSets(cur); cur.done = true; activeEx = null; stopRest();
       savePlan(); sec.replaceChildren(); render(); window.scrollTo(0,0);
     };
     card.append(el("div",{className:"btnrow"},addSet), doneBtn, cmsg);
@@ -415,7 +461,7 @@ function renderGym(sec,keep){
     if(!w.exercises.some(e=>doneSets(e).length)){ say(fmsg,"Tick at least one set before finishing."); return; }
     w.exercises.forEach(e=>{ e.sets = doneSets(e); e.done = true; });
     w.exercises = w.exercises.filter(e=>e.sets.length);
-    w.finishedAt = Date.now(); restEnd = 0; activeEx = null;
+    w.finishedAt = Date.now(); stopRest(); activeEx = null;
     savePlan(); sec.replaceChildren(); render(); window.scrollTo(0,0);
   };
   sec.append(fin,fmsg);
@@ -852,6 +898,10 @@ const valid = k => KINDS[k] || k==="settings" || k==="plan" || (k==="day" && sel
 let returnTo = null;   // set when a screen was opened from Today's plan, so Back returns there
 function go(view,editId){ returnTo = (current==="plan" || current==="day") && view && view!==current ? current : null; try{ location.hash = view; }catch(_){} editingId=editId||null; document.getElementById("detail").replaceChildren(); current = valid(view); render(); window.scrollTo(0,0); }
 window.addEventListener("hashchange",()=>{ const next=valid(location.hash.slice(1)); if(next!==current){ editingId=null; document.getElementById("detail").replaceChildren(); current=next; render(); } });
+document.getElementById("rest-pop-ok").onclick = () => {
+  document.getElementById("rest-pop").hidden = true; restEnd = 0; render();
+  try{ navigator.serviceWorker.getRegistration().then(g=>g&&g.getNotifications({tag:"zg-rest"})).then(ns=>(ns||[]).forEach(n=>n.close())); }catch(_){}
+};
 document.getElementById("open-settings").onclick = () => go("settings");
 
 current = valid(location.hash.slice(1));
