@@ -134,7 +134,9 @@ form .pill{grid-column:1/-1}
 .sugg{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
 .sugg small{color:var(--muted);font-size:13px}
 .ownrow{display:flex;gap:8px}
-.ownrow input{flex:1}
+.ownrow input{flex:1;min-width:0}
+.gsel{flex:none;max-width:42%;font:inherit;font-size:14px;color:var(--fg);background:var(--surface2);border:1px solid var(--line);border-radius:12px;padding:0 8px}
+.ownrow{flex-wrap:nowrap}
 .wsvg{width:100%;height:auto;display:block;touch-action:manipulation;cursor:pointer}
 .wgrid{stroke:var(--line);stroke-width:1}
 .wax{fill:var(--muted);font-size:11px;font-family:var(--body)}
@@ -261,6 +263,29 @@ const SUGGEST = {
   Glutes:["Hip thrust","Glute bridge","Bulgarian split squat"],
   Calves:["Standing calf raise","Seated calf raise"]
 };
+// Exercises you typed yourself, kept so they show up as suggestions next time.
+let library = {items:[]}, libraryDoc = null;
+const sameName = (a,b) => a.trim().toLowerCase()===b.trim().toLowerCase();
+function rememberExercise(name,group){
+  name = name.trim(); if(!name || !MUSCLES.includes(group)) return;
+  if(SUGGEST[group].some(n=>sameName(n,name))) return;
+  const items = library.items.filter(x=>!sameName(x.name,name));
+  items.push({name,group}); library = {items};
+  if(libraryDoc) libraryDoc.set(library).catch(()=>{});
+}
+// Built-in suggestions for a muscle, then your own: saved ones, workout days, and anything logged before.
+function exercisesFor(m){
+  const out = [...SUGGEST[m]], add = n => { if(n && !out.some(x=>sameName(x,n))) out.push(n.trim()); };
+  library.items.filter(x=>x.group===m).forEach(x=>add(x.name));
+  routines.days.forEach(d=>d.exercises.forEach(x=>{ if(x.group===m) add(x.name); }));
+  Object.keys(plansByDate).sort().reverse().forEach(k=>{ const w = plansByDate[k] && plansByDate[k].workout; ((w&&w.exercises)||[]).forEach(x=>{ if(x.group===m) add(x.name); }); });
+  return out;
+}
+function groupPicker(id,first){
+  const sel = el("select",{id,className:"gsel"}); sel.setAttribute("aria-label","Muscle group");
+  [...new Set([...(first||[]),...MUSCLES])].forEach(m=>sel.append(el("option",{value:m,textContent:m})));
+  return sel;
+}
 const STEP_KG = 10;   // next set starts this much heavier; bodyweight (0 kg) stays 0
 const nextKg = k => k>0 ? k+STEP_KG : 0;
 const uid = () => Date.now().toString(36)+Math.random().toString(36).slice(2,6);
@@ -600,7 +625,7 @@ function renderGym(sec,keep){
   const sug = el("div",{className:"group"},el("h3",{textContent:"Add an exercise"}));
   plan.muscles.forEach(m=>{
     const chips = el("div",{className:"chips"});
-    SUGGEST[m].filter(n=>!have.has(n.toLowerCase())).forEach(n=>{
+    exercisesFor(m).filter(n=>!have.has(n.toLowerCase())).forEach(n=>{
       const c = el("button",{className:"chip",type:"button",textContent:n});
       c.onclick = () => { addExercise(n,m); sec.replaceChildren(); render(); window.scrollTo(0,0); };
       chips.append(c);
@@ -610,9 +635,10 @@ function renderGym(sec,keep){
   const own = el("input",{id:"own-ex",type:"text",maxLength:60,autocomplete:"off",placeholder:"Or type your own exercise"}); own.setAttribute("aria-label","Your own exercise");
   if(keep["own-ex"]) own.value = keep["own-ex"];
   const ownBtn = el("button",{className:"pill",type:"button",id:"own-add",textContent:"Add"});
-  const addOwn = () => { const n = own.value.trim(); if(!n){ own.focus(); return; } addExercise(n,plan.muscles[0]||"Other"); sec.replaceChildren(); render(); window.scrollTo(0,0); };
+  const gsel = groupPicker("own-group",plan.muscles);
+  const addOwn = () => { const n = own.value.trim(); if(!n){ own.focus(); return; } rememberExercise(n,gsel.value); addExercise(n,gsel.value); sec.replaceChildren(); render(); window.scrollTo(0,0); };
   ownBtn.onclick = addOwn; own.onkeydown = e => { if(e.key==="Enter"){ e.preventDefault(); addOwn(); } };
-  sug.append(el("div",{className:"ownrow"},own,ownBtn));
+  sug.append(el("div",{className:"ownrow"},own,gsel,ownBtn));
   sec.append(muscleChips(), sug);
 
   const fmsg = el("p",{className:"msg",hidden:true});
@@ -654,12 +680,13 @@ function renderRoutines(sec){
     });
     card.append(ul);
     const have = new Set(d.exercises.map(x=>x.name.toLowerCase())), add = el("div",{className:"chips"});
-    d.muscles.forEach(m=>SUGGEST[m].filter(n=>!have.has(n.toLowerCase())).forEach(n=>{
+    d.muscles.forEach(m=>exercisesFor(m).filter(n=>!have.has(n.toLowerCase())).forEach(n=>{
       const c = el("button",{className:"chip",type:"button",textContent:"+ "+n}); c.onclick = () => { d.exercises.push({name:n,group:m,sets:3}); rerender(); }; add.append(c); }));
     const own = el("input",{id:"rd-own-"+d.id,type:"text",maxLength:60,placeholder:"Or type an exercise"}); own.setAttribute("aria-label","Your own exercise");
-    const ob = el("button",{className:"pill",type:"button",textContent:"Add"}); ob.onclick = () => { const n = own.value.trim(); if(n){ d.exercises.push({name:n,group:d.muscles[0]||"Other",sets:3}); rerender(); } };
+    const gs = groupPicker("rd-group-"+d.id,d.muscles);
+    const ob = el("button",{className:"pill",type:"button",textContent:"Add"}); ob.onclick = () => { const n = own.value.trim(); if(n){ rememberExercise(n,gs.value); d.exercises.push({name:n,group:gs.value,sets:3}); rerender(); } };
     if(add.children.length) card.append(el("small",{className:"eyebrow",textContent:"Add exercises"}),add);
-    card.append(el("div",{className:"ownrow"},own,ob));
+    card.append(el("div",{className:"ownrow"},own,gs,ob));
     sec.append(card);
   });
   const addDay = el("button",{className:"pill",type:"button",textContent:"Add a day"});
@@ -1135,6 +1162,8 @@ render();
   pdoc = db.doc("profile/me");
   planDoc = db.doc("plans/"+dayKey());
   routinesDoc = db.doc("routines/me");
+  libraryDoc = db.doc("library/me");
+  libraryDoc.onSnapshot(s=>{ const d = s.exists && s.data(); if(d && Array.isArray(d.items)) library = {items: d.items.filter(x=>x && x.name && MUSCLES.includes(x.group))}; scheduleRender(); }, lost);
   routinesDoc.onSnapshot(s=>{ const d = s.exists && s.data(); if(d && Array.isArray(d.days) && d.days.length) routines = {days: JSON.parse(JSON.stringify(d.days))}; scheduleRender(); }, lost);
   let booted = false;
   db.collection("plans").limit(1000).onSnapshot(snap=>{
