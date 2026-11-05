@@ -185,6 +185,16 @@ form .pill{grid-column:1/-1}
 .rs-row button,.rs-hide{background:none;color:#f2f3ef;border:1px solid #4a525b;border-radius:999px;padding:12px 20px;font-size:16px}
 .rs-go{background:#f2f3ef;color:#000;border:0;border-radius:18px;padding:18px 28px;font-size:19px;font-weight:700;min-width:240px}
 .rs-hide{border:0;color:#9aa3ac}
+.caprow{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.caprow .pill{padding:4px 12px;font-size:13px}
+.calnav{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.calnav b{font-size:18px;text-align:center}
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+.calh{text-align:center;font-size:12px;color:var(--muted)}
+.cal .wd{padding:10px 0;font-size:16px;font-weight:600;color:var(--fg);position:relative}
+.cal .wd.on{color:var(--on-plate)}
+.cal .wd.lift::after{content:"";position:absolute;bottom:4px;left:50%;width:6px;height:6px;margin-left:-3px;border-radius:50%;background:currentColor}
+.cal .wd:disabled{opacity:.35;cursor:default}
 .empty,.note{color:var(--muted);margin:0}
 .note{font-size:14px}
 </style>
@@ -954,7 +964,8 @@ function profileForm(prefix,keep,{title,hint,button,done}){
 function renderHome(){
   document.getElementById("dateline").textContent = new Date().toLocaleDateString(undefined,{weekday:"long",day:"numeric",month:"long"})+". What are you logging?";
   const week = document.getElementById("week");
-  week.replaceChildren(el("p",{className:"cap",textContent:"Last 7 days. Filled days have something logged."}));
+  const calBtn = el("button",{className:"pill",type:"button",id:"open-cal",textContent:"Calendar"}); calBtn.onclick = () => { calMonth = null; go("calendar"); };
+  week.replaceChildren(el("div",{className:"cap caprow"},el("span",{textContent:"Last 7 days. Filled days have something logged."}),calBtn));
   for(let i=6;i>=0;i--){
     const d = new Date(); d.setDate(d.getDate()-i);
     const on = entries.some(e=>e.date===dayKey(d)) || !!(plansByDate[dayKey(d)]||{}).workout;
@@ -1084,9 +1095,9 @@ function renderDetail(){
   const keep = {}; sec.querySelectorAll("input").forEach(i=>keep[i.id]=i.value);
   const focusId = document.activeElement && document.activeElement.id;
   sec.dataset.kind = current; sec.replaceChildren();
-  const back = el("button",{className:"pill back",type:"button",textContent:returnTo==="plan"?"← Today's plan":returnTo==="day"?"← Back to that day":returnTo==="gym"?"← Gym":"← All options"}); back.onclick=()=>go(returnTo||"");
+  const back = el("button",{className:"pill back",type:"button",textContent:returnTo==="plan"?"← Today's plan":returnTo==="day"?"← Back to that day":returnTo==="gym"?"← Gym":returnTo==="calendar"?"← Calendar":"← All options"}); back.onclick=()=>go(returnTo||"");
   sec.append(back);
-  current==="settings" ? renderSettings(sec,keep) : current==="day" ? renderDay(sec) : current==="routines" ? renderRoutines(sec) : current==="plan" ? renderPlan(sec,keep) : renderKind(sec,keep);
+  current==="settings" ? renderSettings(sec,keep) : current==="day" ? renderDay(sec) : current==="routines" ? renderRoutines(sec) : current==="calendar" ? renderCalendar(sec) : current==="plan" ? renderPlan(sec,keep) : renderKind(sec,keep);
   if(focusId){ const f=document.getElementById(focusId); if(f) f.focus(); }
 }
 
@@ -1113,6 +1124,35 @@ function render(){
   syncAwake();
 }
 let selDate = null;   // the past day open in the day view
+let calMonth = null;  // first day of the month shown in the calendar
+const loggedOn = k => entries.some(e=>e.date===k) || trained(plansByDate[k]) || !!(plansByDate[k] && plansByDate[k].workout && plansByDate[k].workout.exercises && plansByDate[k].workout.exercises.length);
+// Month calendar: go back as far as you like; tap a day to open it.
+function renderCalendar(sec){
+  const now = new Date(); if(!calMonth) calMonth = new Date(now.getFullYear(),now.getMonth(),1);
+  const y = calMonth.getFullYear(), m = calMonth.getMonth(), thisMonth = y===now.getFullYear() && m===now.getMonth();
+  const prev = el("button",{className:"pill",type:"button",id:"cal-prev",textContent:"‹ Previous"}); prev.onclick = () => { calMonth = new Date(y,m-1,1); sec.replaceChildren(); render(); };
+  const next = el("button",{className:"pill",type:"button",id:"cal-next",textContent:"Next ›"}); next.disabled = thisMonth; next.onclick = () => { calMonth = new Date(y,m+1,1); sec.replaceChildren(); render(); };
+  const ym = y+"-"+String(m+1).padStart(2,"0");
+  const daysIn = new Date(y,m+1,0).getDate(); let active = 0, workouts = 0;
+  for(let d=1; d<=daysIn; d++){ const k = ym+"-"+String(d).padStart(2,"0"); if(loggedOn(k)) active++; if(trained(plansByDate[k])) workouts++; }
+  sec.append(el("div",{className:"head"},el("h2",{textContent:"Calendar"})),
+    el("div",{className:"calnav"},prev,el("b",{textContent:calMonth.toLocaleDateString(undefined,{month:"long",year:"numeric"})}),next),
+    el("p",{className:"hint",textContent:workouts+(workouts===1?" workout":" workouts")+" · "+active+(active===1?" day":" days")+" with something logged"}));
+  const grid = el("div",{className:"cal"});
+  const mon = new Date(2024,0,1); // a Monday, for weekday labels
+  for(let i=0;i<7;i++){ const d = new Date(mon); d.setDate(1+i); grid.append(el("span",{className:"calh",textContent:d.toLocaleDateString(undefined,{weekday:"narrow"})})); }
+  for(let i=0;i<(new Date(y,m,1).getDay()+6)%7;i++) grid.append(el("span"));
+  const today = dayKey();
+  for(let d=1; d<=daysIn; d++){
+    const k = ym+"-"+String(d).padStart(2,"0"), future = k>today;
+    const b = el("button",{type:"button",className:"wd"+(k===today?" now":"")+(loggedOn(k)?" on":"")+(trained(plansByDate[k])?" lift":""),textContent:String(d)});
+    b.disabled = future;
+    b.setAttribute("aria-label",new Date(y,m,d).toLocaleDateString(undefined,{weekday:"long",day:"numeric",month:"long"})+(trained(plansByDate[k])?", workout":loggedOn(k)?", logged":""));
+    b.onclick = () => { if(k===today) go("plan"); else { selDate = k; go("day"); } };
+    grid.append(b);
+  }
+  sec.append(grid, el("p",{className:"note",textContent:"Green: something logged. Dot: a workout. Tap a day to see it."}));
+}
 // A past day, opened from the week strip: what was planned and logged. Entries can still be edited or removed.
 function renderDay(sec){
   const key = selDate || dayKey(), p = plansByDate[key] || {}, w = p.workout, ms = Array.isArray(p.muscles) ? p.muscles : [];
@@ -1133,9 +1173,9 @@ function renderDay(sec){
       list.length ? ul : el("p",{className:"empty",textContent:"Nothing logged."})));
   }
 }
-const valid = k => KINDS[k] || k==="settings" || k==="plan" || k==="routines" || (k==="day" && selDate) ? k : null;
+const valid = k => KINDS[k] || k==="settings" || k==="plan" || k==="routines" || k==="calendar" || (k==="day" && selDate) ? k : null;
 let returnTo = null;   // set when a screen was opened from Today's plan, so Back returns there
-function go(view,editId){ returnTo = (current==="plan" || current==="day" || current==="gym") && view && view!==current ? current : null; try{ location.hash = view; }catch(_){} editingId=editId||null; document.getElementById("detail").replaceChildren(); current = valid(view); render(); window.scrollTo(0,0); }
+function go(view,editId){ returnTo = (current==="plan" || current==="day" || current==="gym" || current==="calendar") && view && view!==current ? current : null; try{ location.hash = view; }catch(_){} editingId=editId||null; document.getElementById("detail").replaceChildren(); current = valid(view); render(); window.scrollTo(0,0); }
 window.addEventListener("hashchange",()=>{ const next=valid(location.hash.slice(1)); if(next!==current){ editingId=null; document.getElementById("detail").replaceChildren(); current=next; render(); } });
 document.getElementById("rs-go").onclick = () => { stopRest(); render(); };
 document.getElementById("rs-hide").onclick = () => { restHidden = true; showRest(); render(); };
